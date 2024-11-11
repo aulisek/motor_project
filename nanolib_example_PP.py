@@ -1,24 +1,3 @@
-# -*- coding: utf-8 -*-
-
-###########################################################################################################
-# This Example Code is based on our experience with typical user requirements in a wide range
-# of industrial applications and is provided without guarantee regarding correctness and completeness.
-# It serves as general guidance and should not be construed as a commitment of Nanotec to guarantee its
-# applicability to the customer application without additional tests under the specific conditions
-# and – if and when necessary – modifications by the customer. 
-
-# The responsibility for the applicability and use of the Example Code in a particular
-# customer application lies solely within the authority of the customer.
-# It is the customer's responsibility to evaluate, investigate and decide,
-# whether the Example Code is valid and suitable for the respective customer application, or not.
-# Defects resulting from the improper handling of devices and modules are excluded from the warranty.
-# Under no circumstances will Nanotec be liable for any direct, indirect, incidental or consequential damages
-# arising in connection with the Example Code provided. In addition, the regulations regarding the
-# liability from our Terms and Conditions of Sale and Delivery shall apply.
-############################################################################################################
-
-# Author: Fabian Schober, Nanotec
-
 from nanolib_helper import Nanolib, NanolibHelper
 # from Nanolib import NanoLibAccessor
 import time
@@ -172,6 +151,76 @@ if __name__ == '__main__':
 
      ### example code to let the motor run in Profile Position mode
     
+    # stop a possibly running NanoJ program
+    nanoj_control = nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
+    
+    # # Homing Mode
+    # nanolib_helper.write_number(device_handle, 35, Nanolib.OdIndex(0x6098, 0x00), 8)
+    # nanolib_helper.write_number(device_handle, 720, Nanolib.OdIndex(0x608F, 0x01), 32)
+    # nanolib_helper.write_number(device_handle, 1, Nanolib.OdIndex(0x608F, 0x02), 32)
+
+     # switch the state machine to "enable voltage"
+    status_word = nanolib_helper.write_number(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # choose Homing mode value = 6
+    # mode_of_operation = nanolib_helper.write_number(device_handle, 6, Nanolib.OdIndex(0x6060, 0x00), 8)
+
+    # switch the state machine to "switch on"
+    status_word = nanolib_helper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # switch the state machine to "enable operation state"
+    status_word = nanolib_helper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # Start homing 
+    # status_word = nanolib_helper.write_number(device_handle, 0x1F, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # while(True):
+    #     status_word = nanolib_helper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
+    #     print("Print:", status_word)
+    #     if ((status_word & 0x1400) != 0x1400):
+    #          break
+    #     time.sleep(0.01)
+
+    # switch the state machine to "switch on"
+    status_word = nanolib_helper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
+
+    # choose Profile Position mode value = 1
+    mode_of_operation = nanolib_helper.write_number(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
+    
+    
+
+
+
+    # # set the desired speed in rpm
+    # target_velocity = nanolib_helper.write_number(device_handle, 54, Nanolib.OdIndex(0x6081, 0x00), 32)
+    
+    # # set the desired target position
+    # target_velocity = nanolib_helper.write_number(device_handle, 5400, Nanolib.OdIndex(0x607A, 0x00), 32)
+    # print("Printing:",target_velocity)
+    # # switch the state machine to "operation enabled"
+    # status_word = nanolib_helper.write_number(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
+    # status_word = nanolib_helper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
+    # status_word = nanolib_helper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # # move the motor to the desired target psoition relatively
+    # status_word = nanolib_helper.write_number(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # # 6041 - destination reached
+    # while(True):
+    #     status_word = nanolib_helper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
+    #     if ((status_word & 0x1400) == 0x1400):
+    #         break
+        
+    # status_word = nanolib_helper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    # # set the new desired target position
+    # target_velocity = nanolib_helper.write_number(device_handle, -3600, Nanolib.OdIndex(0x607A, 0x00), 32)
+    
+    # # move the motor to the desired target psoition relatively
+    # status_word = nanolib_helper.write_number(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+    
+    
+    ### example code to let the motor run in Profile Position mode
     
     # stop a possibly running NanoJ program
     nanoj_control = nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
@@ -192,10 +241,10 @@ if __name__ == '__main__':
     
     # move the motor to the desired target psoition relatively
     status_word = nanolib_helper.write_number(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
-    
+    status_word = nanolib_helper.write_number(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
     while(True):
         status_word = nanolib_helper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-        print("hybeam",status_word)
+        print(bin(status_word))
         if ((status_word & 0x1400) == 0x1400):
             break
         
@@ -209,7 +258,7 @@ if __name__ == '__main__':
     
     while(True):
         status_word = nanolib_helper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-        print(status_word)
+        print(bin(status_word))
         if ((status_word & 0x1400) == 0x1400):
             break
     

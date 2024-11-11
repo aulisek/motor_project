@@ -22,6 +22,7 @@
 from nanolib_helper import Nanolib, NanolibHelper
 # from Nanolib import NanoLibAccessor
 import time
+import ctypes
 
 def object_dictionary_access_examples(nanolib_helper, device_handle):
     print('\nOD Example\n')
@@ -78,6 +79,7 @@ if __name__ == '__main__':
         
     # Use the selected bus hardware
     bus_hw_id = bus_hardware_ids[line_num]
+    print(bus_hw_id)
 
     # create bus hardware options for opening the hardware
     bus_hw_options = nanolib_helper.create_bus_hardware_options(bus_hw_id)
@@ -140,15 +142,17 @@ if __name__ == '__main__':
     mode_of_operation = nanolib_helper.write_number(device_handle, 3, Nanolib.OdIndex(0x6060, 0x00), 8)
     
     # set the desired speed in rpm
-    target_velocity = nanolib_helper.write_number(device_handle, 100, Nanolib.OdIndex(0x60FF, 0x00), 32)
+    speed = ctypes.c_int64(int(input("Insert the velocity in RPM:")))
+    time_run = int(input("Insert desired time of rotating in seconds:"))
+    target_velocity = nanolib_helper.write_number(device_handle, speed.value, Nanolib.OdIndex(0x60FF, 0x00), 32)
     
     # switch the state machine to "operation enabled"
     status_word = nanolib_helper.write_number(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
     status_word = nanolib_helper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
     status_word = nanolib_helper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
     
-    # let the motor run for 3s
-    time.sleep(3)
+    # let the motor run for desired time
+    time.sleep(time_run)
         
     # stop the motor
     status_word = nanolib_helper.write_number(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)

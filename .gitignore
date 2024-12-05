@@ -174,7 +174,6 @@ cython_debug/
 # Built Visual Studio Code Extensions
 *.vsix
 nanolib_example.py
-nanolib_helper.py
 Template PD-Motor__20241021.nprj
 .vscode/settings.json
 nanolib_sampler_example.py
@@ -182,3 +181,5 @@ nanolib_profinet_example.py
 podklady/PD1C_ModbusRTU_Technical-Manual_V1.0.2.pdf
 podklady/Ngwabebhoh et al. - 2023 - Conducting polypyrrole-coated leathers.pdf
 podklady/NanoLib-Python_User_Manual_V1.2.2.pdf
+/nanolib_example_PP.py
+/control.py

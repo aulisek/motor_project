@@ -269,17 +269,18 @@ if __name__ == '__main__':
     #target_position1 = 3600  # Cílová pozice 1
     target_position2 = 0  # Cílová pozice 2 
     #repete = 2 # number of repetition
-
-    app = QApplication([])
-    window = MainWindow()
-    window.show()
-    app.exec_()
-    
     enable_voltage(device_handle)
     switch_on(device_handle)
     enable_operation(device_handle)
     switch_on(device_handle)  # Repeat if required
     set_profile_position_mode(device_handle)
+    
+    app = QApplication([])
+    window = MainWindow()
+    window.show()
+    app.exec_()
+    
+    
 
 
     

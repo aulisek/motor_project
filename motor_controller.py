@@ -1,9 +1,12 @@
 from nanolib_helper import Nanolib, NanolibHelper
+import threading
+import queue
 
 class MotorController:
     def __init__(self):
         self.nanolib_helper = NanolibHelper()
         self.device_handle = self.initialize_motor()
+        self.position_queue = queue.Queue()  # Thread-safe queue for position data
 
     def setup_nanolib(self):
         """Initialize nanolib and set logging level."""
@@ -79,17 +82,23 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
         
 
-    def move_to_position(self, position):
+    def move_to_position(self, position, callback):
         """Start the movement and waiting until the movement is done."""
         self.nanolib_helper.write_number(self.device_handle, position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
             status_word = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            print("position:",self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00)))
+            position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00))
+            print(position_value)
+            #threading.Thread(target=callback, args=(position_value, self.position_queue)).start()
             if status_word & 0x1400 == 0x1400:
                 break
         self.nanolib_helper.write_number(self.device_handle,-0x11, Nanolib.OdIndex(0x6040, 0x00), 16)
-                
+
+    def collect_position_data(self, position, data_queue):
+        """Callback function to collect position data in queue."""
+        data_queue.put(position)  # Add the position value to the queue
+
     def stop_motor(self):
         """Stop the movement."""
         self.nanolib_helper.write_number(self.device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)

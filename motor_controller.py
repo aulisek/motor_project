@@ -56,6 +56,7 @@ class MotorController:
             # Ending position
             self.move_to_position(target_position2)
         self.stop_motor()
+        return 1
 
     def set_motion_parameters(self, max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
                                prof_velocity, end_velocity):

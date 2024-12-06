@@ -183,3 +183,6 @@ podklady/Ngwabebhoh et al. - 2023 - Conducting polypyrrole-coated leathers.pdf
 podklady/NanoLib-Python_User_Manual_V1.2.2.pdf
 /nanolib_example_PP.py
 /control.py
+test.py
+GUI.py
+control_motor_old_version.py

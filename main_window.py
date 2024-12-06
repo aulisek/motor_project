@@ -1,8 +1,11 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget, QFileDialog
 )
 from PyQt5.QtCore import Qt, QTimer
-
+import pyqtgraph as pg
+from pyqtgraph import PlotWidget
+import csv
+import sys
 
 class MainWindow(QMainWindow):
     def __init__(self, motor_controller):
@@ -20,9 +23,11 @@ class MainWindow(QMainWindow):
         # Tabs
         self.basic_tab = self.create_basic_tab()
         self.expert_tab = self.create_expert_tab()
+        self.plot_tab = self.create_plot_tab()
 
         self.tab_widget.addTab(self.basic_tab, "Basic Options")
         self.tab_widget.addTab(self.expert_tab, "Expert Options")
+        self.tab_widget.addTab(self.plot_tab, "Data plots")
 
         # Set central widget
         self.setCentralWidget(self.tab_widget)
@@ -102,6 +107,40 @@ class MainWindow(QMainWindow):
         expert_tab.setLayout(advanced_layout)
         return expert_tab
 
+    def create_plot_tab(self):
+        # Create the plot tab
+        plot_tab = QWidget()
+        layout = QVBoxLayout()
+
+        # Create PyQtGraph widgets
+        self.data_widget = PlotWidget()
+        self.position_widget = PlotWidget()
+
+        # Setup plots
+        self.plot_manager.setup_plots(self.data_widget, self.position_widget)
+
+        # Add widgets to layout
+        layout.addWidget(self.data_widget)
+        layout.addWidget(self.position_widget)
+
+        # Add controls
+        self.start_button = QPushButton("Start Plotting")
+        self.stop_button = QPushButton("Stop Plotting")
+        self.save_button = QPushButton("Save Data")
+
+        self.start_button.clicked.connect(self.start_plotting)
+        self.stop_button.clicked.connect(self.stop_plotting)
+        self.save_button.clicked.connect(self.save_plot_data)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.stop_button)
+        button_layout.addWidget(self.save_button)
+        layout.addLayout(button_layout)
+
+        plot_tab.setLayout(layout)
+        return plot_tab
+
     @staticmethod
     def create_slider(min_value, max_value, initial_value):
         slider = QSlider(Qt.Horizontal)
@@ -144,3 +183,91 @@ class MainWindow(QMainWindow):
         self.position_slider.setEnabled(enabled)
         self.repetition_spinbox.setEnabled(enabled)
         self.start_button.setEnabled(enabled)
+    
+    def save_plot_data(self):
+        """Prompt the user to select a file path and save the data."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Data", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        if file_path:
+            self.plot_manager.save_data(file_path)
+
+class PlotManager:
+    def __init__(self, ni_device, motor_controller):
+        self.ni_device = ni_device
+        self.motor_controller = motor_controller
+
+        # Timers
+        self.gui_timer = QTimer()
+        self.data_timer = QTimer()
+
+        # Data storage
+        self.data = []  # Electrode data
+        self.position_data = []  # Motor position data
+
+        # PyQtGraph Plots
+        self.data_plot = None
+        self.position_plot = None
+        self.data_curve = None
+        self.position_curve = None
+
+        # Configuration
+        self.gui_refresh_rate = 100  # 100 ms for GUI updates
+        self.data_save_rate = 1000  # 1 second for storing data
+
+    def setup_plots(self, data_widget: PlotWidget, position_widget: PlotWidget):
+        """Setup PyQtGraph plots."""
+        # Electrode Data Plot
+        self.data_plot = data_widget
+        self.data_plot.setTitle("Electrode Data")
+        self.data_plot.setLabel("left", "Voltage (V)")
+        self.data_plot.setLabel("bottom", "Time (s)")
+        self.data_curve = self.data_plot.plot(pen=pg.mkPen(color='b', width=2))
+
+        # Motor Position Plot
+        self.position_plot = position_widget
+        self.position_plot.setTitle("Motor Position")
+        self.position_plot.setLabel("left", "Angle (°)")
+        self.position_plot.setLabel("bottom", "Time (s)")
+        self.position_curve = self.position_plot.plot(pen=pg.mkPen(color='r', width=2))
+
+    def start(self):
+        """Start real-time plotting and data storage with separate timers."""
+        self.gui_timer.timeout.connect(self.update_plot)
+        self.gui_timer.start(self.gui_refresh_rate)
+
+        self.data_timer.timeout.connect(self.record_data)
+        self.data_timer.start(self.data_save_rate)
+
+    def stop(self):
+        """Stop both plotting and data recording."""
+        self.gui_timer.stop()
+        self.data_timer.stop()
+
+    def update_plot(self):
+        """Update the plots with new data from NI device and motor controller."""
+        # Plot the latest data
+        self.data_curve.setData(self.data)
+        self.position_curve.setData(self.position_data)
+
+    def record_data(self):
+        """Collect data from NI device and motor controller for storage."""
+        # Get data
+        electrode_value = self.ni_device.get_measurement()  # Replace with real NI call
+        motor_position = self.motor_controller.get_position()  # Replace with real motor call
+
+        # Store data
+        self.data.append(electrode_value)
+        self.position_data.append(motor_position)
+
+    def save_data(self, file_path):
+        """Save the recorded data to the specified CSV file."""
+        try:
+            with open(file_path, mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["Time", "Electrode Data", "Motor Position"])
+                for i, (e_val, m_pos) in enumerate(zip(self.data, self.position_data)):
+                    writer.writerow([i, e_val, m_pos])
+            print(f"Data saved to {file_path}.")
+        except Exception as e:
+            print(f"Error saving data: {str(e)}")

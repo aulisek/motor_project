@@ -85,6 +85,7 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
             status_word = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6041, 0x00))
+            print("position:",self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00)))
             if status_word & 0x1400 == 0x1400:
                 break
         self.nanolib_helper.write_number(self.device_handle,-0x11, Nanolib.OdIndex(0x6040, 0x00), 16)

@@ -50,7 +50,10 @@ class MotorController:
         self.nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
     def execute_motion(self, home_position, target_position1, target_position2, repetitions):
+        self.enable_voltage()
+        self.switch_on()
         self.enable_operation()
+        self.set_profile_position_mode()
         self.move_to_position(home_position)
         for _ in range(repetitions):
             # Starting position

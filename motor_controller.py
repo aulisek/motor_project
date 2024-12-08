@@ -82,7 +82,7 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
         
 
-    def move_to_position(self, position, callback):
+    def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
         self.nanolib_helper.write_number(self.device_handle, position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
@@ -94,6 +94,11 @@ class MotorController:
             if status_word & 0x1400 == 0x1400:
                 break
         self.nanolib_helper.write_number(self.device_handle,-0x11, Nanolib.OdIndex(0x6040, 0x00), 16)
+
+    def get_position(self):
+        """Get position of the motor"""
+        position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00))
+        return position_value
 
     def collect_position_data(self, position, data_queue):
         """Callback function to collect position data in queue."""

@@ -1,16 +1,18 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget, QFileDialog
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget
 import csv
 import sys
 
 class MainWindow(QMainWindow):
-    def __init__(self, motor_controller):
+    def __init__(self, motor_controller, ni_device):
         super().__init__()
         self.motor_controller = motor_controller
+        self.ni_device = ni_device
+        self.plot_manager = PlotManager(self.ni_device, self.motor_controller)
         self.init_ui()
 
     def init_ui(self):
@@ -128,8 +130,8 @@ class MainWindow(QMainWindow):
         self.stop_button = QPushButton("Stop Plotting")
         self.save_button = QPushButton("Save Data")
 
-        self.start_button.clicked.connect(self.start_plotting)
-        self.stop_button.clicked.connect(self.stop_plotting)
+        self.start_button.clicked.connect(self.plot_manager.start)
+        self.stop_button.clicked.connect(self.plot_manager.stop)
         self.save_button.clicked.connect(self.save_plot_data)
 
         button_layout = QHBoxLayout()
@@ -172,10 +174,30 @@ class MainWindow(QMainWindow):
 
         self.toggle_inputs(False)
         self.status_label.setText("Processing... Please wait.")
-        QTimer.singleShot(100, lambda: self.motor_controller.set_motion_parameters(max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
-                               prof_velocity, end_velocity))
-        QTimer.singleShot(100, lambda: self.motor_controller.execute_motion(home_position, target_position1, target_position2, repetitions))
-        
+        # Set motion parameters
+        self.motor_controller.set_motion_parameters(
+        max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
+        prof_velocity, end_velocity)
+        #QTimer.singleShot(100, lambda: self.motor_controller.set_motion_parameters(max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
+        #                       prof_velocity, end_velocity))
+        #QTimer.singleShot(100, lambda: self.motor_controller.execute_motion(home_position, target_position1, target_position2, repetitions))
+        # Create a thread and worker
+        self.thread = QThread()
+        self.worker = MotionWorker(
+            self.motor_controller, home_position, target_position1, target_position2, repetitions
+        )
+        self.worker.moveToThread(self.thread)
+
+        # Connect signals and slots
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.status_updated.connect(self.status_label.setText)
+        self.worker.finished.connect(lambda: self.toggle_inputs(True))
+
+        # Start the thread
+        self.thread.start()
 
     def toggle_inputs(self, enabled):
         # Now these sliders and buttons are accessible because they are instance variables
@@ -212,7 +234,7 @@ class PlotManager:
         self.position_curve = None
 
         # Configuration
-        self.gui_refresh_rate = 100  # 100 ms for GUI updates
+        self.gui_refresh_rate = 1000  # 100 ms for GUI updates
         self.data_save_rate = 1000  # 1 second for storing data
 
     def setup_plots(self, data_widget: PlotWidget, position_widget: PlotWidget):
@@ -253,8 +275,8 @@ class PlotManager:
     def record_data(self):
         """Collect data from NI device and motor controller for storage."""
         # Get data
-        electrode_value = self.ni_device.get_measurement()  # Replace with real NI call
-        motor_position = self.motor_controller.get_position()  # Replace with real motor call
+        electrode_value = self.ni_device.get_measurement()  
+        motor_position = self.motor_controller.get_position()  
 
         # Store data
         self.data.append(electrode_value)
@@ -271,3 +293,27 @@ class PlotManager:
             print(f"Data saved to {file_path}.")
         except Exception as e:
             print(f"Error saving data: {str(e)}")
+
+class MotionWorker(QObject):
+    finished = pyqtSignal()
+    status_updated = pyqtSignal(str)
+
+    def __init__(self, motor_controller, home_position, target_position1, target_position2, repetitions):
+        super().__init__()
+        self.motor_controller = motor_controller
+        self.home_position = home_position
+        self.target_position1 = target_position1
+        self.target_position2 = target_position2
+        self.repetitions = repetitions
+
+    def run(self):
+        try:
+            self.status_updated.emit("Executing motion...")
+            self.motor_controller.execute_motion(
+                self.home_position, self.target_position1, self.target_position2, self.repetitions
+            )
+            self.status_updated.emit("Motion completed successfully.")
+        except Exception as e:
+            self.status_updated.emit(f"Error during motion: {str(e)}")
+        finally:
+            self.finished.emit()

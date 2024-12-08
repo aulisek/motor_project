@@ -186,3 +186,4 @@ podklady/NanoLib-Python_User_Manual_V1.2.2.pdf
 test.py
 GUI.py
 control_motor_old_version.py
+/control_motor.py

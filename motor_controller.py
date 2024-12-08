@@ -88,7 +88,7 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
             status_word = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00))
+            position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
             print(position_value)
             #threading.Thread(target=callback, args=(position_value, self.position_queue)).start()
             if status_word & 0x1400 == 0x1400:
@@ -97,8 +97,8 @@ class MotorController:
 
     def get_position(self):
         """Get position of the motor"""
-        position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6063, 0x00))
-        return position_value
+        position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
+        return position_value / 10
 
     def collect_position_data(self, position, data_queue):
         """Callback function to collect position data in queue."""

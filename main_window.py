@@ -234,8 +234,8 @@ class PlotManager:
         self.position_curve = None
 
         # Configuration
-        self.gui_refresh_rate = 1000  # 100 ms for GUI updates
-        self.data_save_rate = 1000  # 1 second for storing data
+        self.gui_refresh_rate = 100  # 100 ms for GUI updates
+        self.data_save_rate = 100  # 1 second for storing data
 
     def setup_plots(self, data_widget: PlotWidget, position_widget: PlotWidget):
         """Setup PyQtGraph plots."""

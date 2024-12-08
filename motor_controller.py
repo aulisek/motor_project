@@ -16,8 +16,7 @@ class MotorController:
     def initialize_motor(self):
         """Complete initialization sequence."""
         # Initialize nanolib and set logging level
-        self.nanolib_helper.setup()
-        self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
+        self.setup_nanolib()
        
         # Retrieve and select bus hardware
         bus_hardware = self.get_bus_hardware()

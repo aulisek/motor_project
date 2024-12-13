@@ -82,7 +82,8 @@ class MotorController:
 
         # 0x6082 - Maximum end Velocity
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
-        
+        # counter clockwise
+          
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
@@ -90,8 +91,10 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
             status_word = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6041, 0x00))
+            torque_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6077, 0x00))
             position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-            print(position_value)
+            print(position_value, torque_value)
+
             #threading.Thread(target=callback, args=(position_value, self.position_queue)).start()
             if status_word & 0x1400 == 0x1400:
                 break

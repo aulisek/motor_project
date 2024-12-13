@@ -167,9 +167,9 @@ class MainWindow(QMainWindow):
         prof_deceleration = 40 
         # prof_velocity = 100
         end_velocity = 0 
-        home_position = 0  # Pocatecni pozice
+        home_position = 900  # Pocatecni pozice
         # target_position1 = 3600  # Cílová pozice 1
-        target_position2 = 0  # Cílová pozice 2 
+        target_position2 = 900  # Cílová pozice 2 
         # repetitions = 2 # number of repetition
 
         self.toggle_inputs(False)

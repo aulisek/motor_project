@@ -16,11 +16,12 @@ class NIDevice:
         with nidaqmx.Task() as task:
             #Add an analog input channel (A0) to the task
             #Replace "Dev1" with your device name
-            task.ai_channels.add_ai_voltage_chan("Dev1/ai0")  
+            task.ai_channels.add_ai_voltage_chan("Dev1/ai1")  
             
         #Read the value from the A0 channel
-            value = task.read()
-        return value
+            napeti = task.read()
+            odpor = (10000*(5-napeti)/napeti)
+        return odpor
 
 class DAQController(QThread):
     data_signal = pyqtSignal(list)  # Emit data as a list for processing in the GUI

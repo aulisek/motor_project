@@ -24,12 +24,12 @@ class MainWindow(QMainWindow):
 
         # Tabs
         self.basic_tab = self.create_basic_tab()
-        self.expert_tab = self.create_expert_tab()
         self.plot_tab = self.create_plot_tab()
+        self.expert_tab = self.create_expert_tab()
 
         self.tab_widget.addTab(self.basic_tab, "Basic Options")
-        self.tab_widget.addTab(self.expert_tab, "Expert Options")
         self.tab_widget.addTab(self.plot_tab, "Data plots")
+        self.tab_widget.addTab(self.expert_tab, "Expert Options")
 
         # Set central widget
         self.setCentralWidget(self.tab_widget)
@@ -38,10 +38,14 @@ class MainWindow(QMainWindow):
         # Basic tab layout
         basic_tab = QWidget()
 
-        self.velocity_slider = self.create_slider(1, 100, 50)
+        # Velocity
+        self.velocity_slider, self.velocity_spinbox = self.create_slider_spinbox_pair(1, 500, 100)
         self.velocity_value_label = QLabel(f"{self.velocity_slider.value()}")
-        self.position_slider = self.create_slider(0, 360, 50)
+
+        # Position
+        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 3600, 3500)
         self.position_value_label = QLabel(f"{self.position_slider.value()}")
+
         self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
         self.start_button = QPushButton("Start Motion")
         self.status_label = QLabel("Set values and press Start.")
@@ -50,20 +54,20 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
         slider_layout = QHBoxLayout()
 
-        # Velocity slider with label
+        # Velocity layout
         velocity_layout = QVBoxLayout()
         velocity_layout.addWidget(QLabel("Velocity (rotations/min):"))
         velocity_slider_layout = QHBoxLayout()
         velocity_slider_layout.addWidget(self.velocity_slider)
-        velocity_slider_layout.addWidget(self.velocity_value_label)
+        velocity_slider_layout.addWidget(self.velocity_spinbox)
         velocity_layout.addLayout(velocity_slider_layout)
 
-        # Position slider with label
+        # Position layout
         position_layout = QVBoxLayout()
         position_layout.addWidget(QLabel("Desired Angle (0-360°):"))
         position_slider_layout = QHBoxLayout()
         position_slider_layout.addWidget(self.position_slider)
-        position_slider_layout.addWidget(self.position_value_label)
+        position_slider_layout.addWidget(self.position_spinbox)
         position_layout.addLayout(position_slider_layout)
 
         slider_layout.addLayout(velocity_layout)
@@ -79,34 +83,58 @@ class MainWindow(QMainWindow):
 
         # Connections
         self.start_button.clicked.connect(self.start_motion)
-        self.velocity_slider.valueChanged.connect(lambda: self.velocity_value_label.setText(f"{self.velocity_slider.value()}"))
-        self.position_slider.valueChanged.connect(lambda: self.position_value_label.setText(f"{self.position_slider.value()}"))
 
         return basic_tab
 
     def create_expert_tab(self):
-        # Expert tab layout
+              # Basic tab layout
         expert_tab = QWidget()
 
-        # Example widgets for expert options
-        advanced_setting_1 = QLabel("Advanced Setting 1:")
-        advanced_slider = self.create_slider(0, 200, 100)
-        advanced_value_label = QLabel(f"{advanced_slider.value()}")
-        advanced_slider.valueChanged.connect(lambda: advanced_value_label.setText(f"{advanced_slider.value()}"))
+        # Accel
+        self.velocity_slider, self.velocity_spinbox = self.create_slider_spinbox_pair(1, 500, 100)
+        self.velocity_value_label = QLabel(f"{self.velocity_slider.value()}")
 
-        advanced_layout = QVBoxLayout()
-        advanced_layout.addWidget(advanced_setting_1)
-        advanced_slider_layout = QHBoxLayout()
-        advanced_slider_layout.addWidget(advanced_slider)
-        advanced_slider_layout.addWidget(advanced_value_label)
-        advanced_layout.addLayout(advanced_slider_layout)
+        # Position
+        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 3600, 3500)
+        self.position_value_label = QLabel(f"{self.position_slider.value()}")
 
-        advanced_setting_2 = QLabel("Advanced Setting 2:")
-        advanced_spinbox = self.create_spinbox(0, 500, 250)
-        advanced_layout.addWidget(advanced_setting_2)
-        advanced_layout.addWidget(advanced_spinbox)
+        self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
+        self.start_button = QPushButton("Start Motion")
+        self.status_label = QLabel("Set values and press Start.")
 
-        expert_tab.setLayout(advanced_layout)
+        # Layouts
+        main_layout = QVBoxLayout()
+        slider_layout = QHBoxLayout()
+
+        # Velocity layout
+        velocity_layout = QVBoxLayout()
+        velocity_layout.addWidget(QLabel("Velocity (rotations/min):"))
+        velocity_slider_layout = QHBoxLayout()
+        velocity_slider_layout.addWidget(self.velocity_slider)
+        velocity_slider_layout.addWidget(self.velocity_spinbox)
+        velocity_layout.addLayout(velocity_slider_layout)
+
+        # Position layout
+        position_layout = QVBoxLayout()
+        position_layout.addWidget(QLabel("Desired Angle (0-360°):"))
+        position_slider_layout = QHBoxLayout()
+        position_slider_layout.addWidget(self.position_slider)
+        position_slider_layout.addWidget(self.position_spinbox)
+        position_layout.addLayout(position_slider_layout)
+
+        slider_layout.addLayout(velocity_layout)
+        slider_layout.addLayout(position_layout)
+
+        main_layout.addLayout(slider_layout)
+        main_layout.addWidget(QLabel("Number of Repetitions:"))
+        main_layout.addWidget(self.repetition_spinbox)
+        main_layout.addWidget(self.start_button)
+        main_layout.addWidget(self.status_label)
+
+        expert_tab.setLayout(main_layout)
+
+        # Connections
+        self.start_button.clicked.connect(self.start_motion)
         return expert_tab
 
     def create_plot_tab(self):
@@ -157,19 +185,34 @@ class MainWindow(QMainWindow):
         spinbox.setValue(initial_value)
         return spinbox
 
+    def create_slider_spinbox_pair(self, min_value, max_value, initial_value):
+        """Creates a synchronized slider and spinbox pair."""
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(min_value, max_value)
+        slider.setValue(initial_value)
+
+        spinbox = QSpinBox()
+        spinbox.setRange(min_value, max_value)
+        spinbox.setValue(initial_value)
+
+        # Synchronize slider and spinbox
+        slider.valueChanged.connect(spinbox.setValue)
+        spinbox.valueChanged.connect(slider.setValue)
+        return slider, spinbox
+
     def start_motion(self):
         prof_velocity = self.velocity_slider.value()
         target_position1 = self.position_slider.value() * 10
         repetitions = self.repetition_spinbox.value()
-        max_acceleration = 40 
-        prof_acceleration = 40  
-        max_deceleration = 40 
-        prof_deceleration = 40 
+        max_acceleration = 5000 
+        prof_acceleration = 5000  
+        max_deceleration = 500 
+        prof_deceleration = 500 
         # prof_velocity = 100
         end_velocity = 0 
-        home_position = 900  # Pocatecni pozice
+        home_position = 3600  # Pocatecni pozice
         # target_position1 = 3600  # Cílová pozice 1
-        target_position2 = 900  # Cílová pozice 2 
+        target_position2 = 3600  # Cílová pozice 2 
         # repetitions = 2 # number of repetition
 
         self.toggle_inputs(False)

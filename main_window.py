@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget, QFileDialog
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget, QFileDialog, QComboBox, QMessageBox, QInputDialog
 )
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
 import pyqtgraph as pg
@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
         self.position_value_label = QLabel(f"{self.position_slider.value()}")
 
         self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
-        self.start_button = QPushButton("Start Motion")
+        
         self.status_label = QLabel("Set values and press Start.")
 
         # Layouts
@@ -76,13 +76,9 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(slider_layout)
         main_layout.addWidget(QLabel("Number of Repetitions:"))
         main_layout.addWidget(self.repetition_spinbox)
-        main_layout.addWidget(self.start_button)
         main_layout.addWidget(self.status_label)
 
-        basic_tab.setLayout(main_layout)
-
-        # Connections
-        self.start_button.clicked.connect(self.start_motion)
+        basic_tab.setLayout(main_layout)      
 
         return basic_tab
 
@@ -90,52 +86,105 @@ class MainWindow(QMainWindow):
               # Basic tab layout
         expert_tab = QWidget()
 
-        # Accel
-        self.velocity_slider, self.velocity_spinbox = self.create_slider_spinbox_pair(1, 500, 100)
-        self.velocity_value_label = QLabel(f"{self.velocity_slider.value()}")
+         # Sampling rate for saving data
+        self.sampling_rate_spinbox = self.create_spinbox(1, 10000, 1000)
 
-        # Position
-        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 3600, 3500)
-        self.position_value_label = QLabel(f"{self.position_slider.value()}")
+        # GUI refresh rate
+        self.gui_refresh_rate_spinbox = self.create_spinbox(10, 1000, 50)
 
-        self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
-        self.start_button = QPushButton("Start Motion")
-        self.status_label = QLabel("Set values and press Start.")
+         # File path selection
+        self.file_path_label = QLabel("No file selected")
+        self.select_file_button = QPushButton("Select File")
+        self.select_file_button.clicked.connect(self.select_file)
+
+        self.refresh_ports_button = QPushButton("Refresh Ports")
+        self.refresh_ports_button.clicked.connect(self.update_com_ports)
+
+        self.select_port_button = QPushButton("Select Port")
+        self.select_port_button.clicked.connect(self.select_com_port)
+
+         # COM port selection
+        self.com_port_combo = QComboBox()
+        self.update_com_ports()
+
+        self.select_device_button = QPushButton("Select Device")
+        self.select_device_button.clicked.connect(self.select_com_port)
+        
+        # Acceleration
+        self.acceleration_slider, self.acceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
+        self.acceleration_value_label = QLabel(f"{self.acceleration_slider.value()}")
+
+        # Deceleration
+        self.deceleration_slider, self.deceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
+        self.deceleration_value_label = QLabel(f"{self.deceleration_slider.value()}")
 
         # Layouts
         main_layout = QVBoxLayout()
         slider_layout = QHBoxLayout()
 
-        # Velocity layout
-        velocity_layout = QVBoxLayout()
-        velocity_layout.addWidget(QLabel("Velocity (rotations/min):"))
-        velocity_slider_layout = QHBoxLayout()
-        velocity_slider_layout.addWidget(self.velocity_slider)
-        velocity_slider_layout.addWidget(self.velocity_spinbox)
-        velocity_layout.addLayout(velocity_slider_layout)
+        # Sampling rate layout
+        sampling_rate_layout = QVBoxLayout()
+        sampling_rate_layout.addWidget(QLabel("Sampling Rate for Data Saving (Hz):"))
+        sampling_rate_layout.addWidget(self.sampling_rate_spinbox)
 
-        # Position layout
-        position_layout = QVBoxLayout()
-        position_layout.addWidget(QLabel("Desired Angle (0-360°):"))
-        position_slider_layout = QHBoxLayout()
-        position_slider_layout.addWidget(self.position_slider)
-        position_slider_layout.addWidget(self.position_spinbox)
-        position_layout.addLayout(position_slider_layout)
+        # GUI refresh rate layout
+        gui_rate_layout = QVBoxLayout()
+        gui_rate_layout.addWidget(QLabel("GUI Refresh Rate (ms):"))
+        gui_rate_layout.addWidget(self.gui_refresh_rate_spinbox)
 
-        slider_layout.addLayout(velocity_layout)
-        slider_layout.addLayout(position_layout)
+        # File selection layout
+        file_selection_layout = QVBoxLayout()
+        file_selection_layout.addWidget(QLabel("Selected File Path:"))
+        file_selection_layout.addWidget(self.file_path_label)
+        file_selection_layout.addWidget(self.select_file_button)
 
+        # COM port layout
+        com_port_layout = QVBoxLayout()
+        com_port_layout.addWidget(QLabel("Select COM Port:"))
+        com_port_layout.addWidget(self.com_port_combo)
+        com_port_layout.addWidget(self.refresh_ports_button)
+        com_port_layout.addWidget(self.select_port_button)
+
+        # Acceleration layout
+        acceleration_layout = QVBoxLayout()
+        acceleration_layout.addWidget(QLabel("Profile Acceleration (units/s²):"))
+        acceleration_slider_layout = QHBoxLayout()
+        acceleration_slider_layout.addWidget(self.acceleration_slider)
+        acceleration_slider_layout.addWidget(self.acceleration_spinbox)
+        acceleration_layout.addLayout(acceleration_slider_layout)
+
+        # Deceleration layout
+        deceleration_layout = QVBoxLayout()
+        deceleration_layout.addWidget(QLabel("Profile Deceleration (units/s²):"))
+        deceleration_slider_layout = QHBoxLayout()
+        deceleration_slider_layout.addWidget(self.deceleration_slider)
+        deceleration_slider_layout.addWidget(self.deceleration_spinbox)
+        deceleration_layout.addLayout(deceleration_slider_layout)
+
+        slider_layout.addLayout(acceleration_layout)
+        slider_layout.addLayout(deceleration_layout)
+
+        main_layout.addLayout(sampling_rate_layout)
+        main_layout.addLayout(gui_rate_layout)
+        main_layout.addLayout(file_selection_layout)
+        main_layout.addLayout(com_port_layout)
+        main_layout.addWidget(self.select_device_button)
         main_layout.addLayout(slider_layout)
-        main_layout.addWidget(QLabel("Number of Repetitions:"))
-        main_layout.addWidget(self.repetition_spinbox)
-        main_layout.addWidget(self.start_button)
         main_layout.addWidget(self.status_label)
+        
 
         expert_tab.setLayout(main_layout)
 
         # Connections
-        self.start_button.clicked.connect(self.start_motion)
+        self.acceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.acceleration_slider, self.acceleration_spinbox))
+        self.deceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.deceleration_slider, self.deceleration_spinbox))
+
         return expert_tab
+    
+    def select_file(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "Select File", "", "CSV Files (*.csv);;All Files (*)")
+        if file_path:
+            self.file_path_label.setText(file_path)
 
     def create_plot_tab(self):
         # Create the plot tab
@@ -154,15 +203,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.position_widget)
 
         # Add controls
+        self.start_motor_button = QPushButton("Start Motion")
         self.start_button = QPushButton("Start Plotting")
         self.stop_button = QPushButton("Stop Plotting")
         self.save_button = QPushButton("Save Data")
 
+        self.start_motor_button.clicked.connect(self.start_motion)
         self.start_button.clicked.connect(self.plot_manager.start)
         self.stop_button.clicked.connect(self.plot_manager.stop)
         self.save_button.clicked.connect(self.save_plot_data)
 
         button_layout = QHBoxLayout()
+        button_layout.addWidget(self.start_motor_button)
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
         button_layout.addWidget(self.save_button)
@@ -256,6 +308,31 @@ class MainWindow(QMainWindow):
         )
         if file_path:
             self.plot_manager.save_data(file_path)
+
+    def update_com_ports(self):
+        try:
+            bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
+            print(f"Bus hardware IDs: {bus_hw}")
+            print(f"Hardware items: {hardware_items}")
+            self.com_port_combo.clear()
+            self.com_port_combo.addItems(hardware_items)
+        except Exception as e:
+            print(f"Error updating COM ports: {e}")
+            self.com_port_combo.clear()
+            self.com_port_combo.addItem("No hardware found")
+
+    def select_com_port(self):
+        try:
+            # Get selected index
+            selected_index = self.com_port_combo.currentIndex()
+            if selected_index < 0:
+                raise Exception("No hardware selected.")
+            
+            # Initialize motor with selected hardware
+            self.motor_controller.initialize_motor(selected_index)
+            QMessageBox.information(self, "Success", "Motor initialized successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
 
 class PlotManager:
     def __init__(self, ni_device, motor_controller):

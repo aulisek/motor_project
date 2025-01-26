@@ -1,11 +1,11 @@
 from nanolib_helper import Nanolib, NanolibHelper
-import threading
+#import threading
 import queue
 
 class MotorController:
     def __init__(self):
         self.nanolib_helper = NanolibHelper()
-        self.device_handle = self.initialize_motor()
+        #self.device_handle = self.initialize_motor()
         self.position_queue = queue.Queue()  # Thread-safe queue for position data
 
     def setup_nanolib(self):
@@ -13,22 +13,42 @@ class MotorController:
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
 
-    def initialize_motor(self):
+    def select_bus_hardware(self):
+        """Retrieve and select bus hardware."""
+        bus_hardware = self.get_bus_hardware()
+        hardware_items = [
+            f"{i}. {hw.getName()} (Protocol: {hw.getProtocol()})"
+            for i, hw in enumerate(bus_hardware)
+        ]
+        return bus_hardware, hardware_items
+    
+    def initialize_motor(self, hardware_index):
         """Complete initialization sequence."""
         # Initialize nanolib and set logging level
         self.setup_nanolib()
        
         # Retrieve and select bus hardware
         bus_hardware = self.get_bus_hardware()
-        bus_hw_id = bus_hardware[2]
+        '''
+        bus_hw_id = bus_hardware[3]
         self.open_bus_hardware(bus_hw_id)
         device_handle = self.create_and_connect_device(bus_hw_id)
         self.stop_running_program(device_handle)
-        return device_handle
+        '''
+        if hardware_index < 0 or hardware_index >= len(bus_hardware):
+            raise ValueError("Invalid hardware index.")
+        
+        self.selected_hardware = bus_hardware[hardware_index]
+        self.open_bus_hardware(self.selected_hardware)
+        device_handle = self.create_and_connect_device(self.selected_hardware)
+        self.stop_running_program(device_handle)
+
+        self.device_handle = device_handle
 
     def get_bus_hardware(self):
         """Retrieve and select bus hardware."""
         bus_hardware = self.nanolib_helper.get_bus_hardware()
+        print("vola se bus", bus_hardware)
         if not bus_hardware:
             raise Exception("No bus hardware found.")
         return bus_hardware

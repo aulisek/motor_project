@@ -10,8 +10,8 @@ from nidaqmx.constants import AcquisitionType
 class NIDevice:
     def get_measurement(self):
         # Dummy function to simulate electrode data collection
-        #import random
-        #return random.uniform(0, 10)  # Example value
+        import random
+        return random.uniform(0, 10)  # Example value
         #Create a task object
         with nidaqmx.Task() as task:
             #Add an analog input channel (A0) to the task
@@ -19,9 +19,9 @@ class NIDevice:
             task.ai_channels.add_ai_voltage_chan("Dev1/ai1")  
             
         #Read the value from the A0 channel
-            napeti = task.read()
-            odpor = (10000*(5-napeti)/napeti)
-        return odpor
+            #napeti = task.read()
+           # odpor = (10000*(5-napeti)/napeti)
+        #return odpor
 
 class DAQController(QThread):
     data_signal = pyqtSignal(list)  # Emit data as a list for processing in the GUI

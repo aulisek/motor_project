@@ -7,9 +7,7 @@ class MotorController:
         self.nanolib_helper = NanolibHelper()
         #self.device_handle = self.initialize_motor()
         self.position_queue = queue.Queue()  # Thread-safe queue for position data
-
-    def setup_nanolib(self):
-        """Initialize nanolib and set logging level."""
+        #setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
 
@@ -24,8 +22,6 @@ class MotorController:
     
     def initialize_motor(self, hardware_index):
         """Complete initialization sequence."""
-        # Initialize nanolib and set logging level
-        self.setup_nanolib()
        
         # Retrieve and select bus hardware
         bus_hardware = self.get_bus_hardware()

@@ -100,15 +100,13 @@ class MainWindow(QMainWindow):
         self.refresh_ports_button = QPushButton("Refresh Ports")
         self.refresh_ports_button.clicked.connect(self.update_com_ports)
 
-        self.select_port_button = QPushButton("Select Port")
+        self.select_port_button = QPushButton("Connect selected Device")
         self.select_port_button.clicked.connect(self.select_com_port)
 
          # COM port selection
         self.com_port_combo = QComboBox()
         self.update_com_ports()
 
-        self.select_device_button = QPushButton("Select Device")
-        self.select_device_button.clicked.connect(self.select_com_port)
         
         # Acceleration
         self.acceleration_slider, self.acceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
@@ -168,7 +166,6 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(gui_rate_layout)
         main_layout.addLayout(file_selection_layout)
         main_layout.addLayout(com_port_layout)
-        main_layout.addWidget(self.select_device_button)
         main_layout.addLayout(slider_layout)
         main_layout.addWidget(self.status_label)
         

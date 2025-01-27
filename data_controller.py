@@ -66,15 +66,36 @@ class DataProcessor:
         self.buffer.extend(filtered_data)
         return filtered_data
 
-# data_logger.py
-import threading
+class DataLogger(QThread):
+    log_signal = pyqtSignal(list)  # Signal to accept data for logging
 
-class DataLogger:
     def __init__(self, filename):
+        super().__init__()
         self.filename = filename
-        self.lock = threading.Lock()
+        self.running = False
+        self.data_queue = []  # Internal buffer for incoming data
+
+    def run(self):
+        self.running = True
+        while self.running:
+            if self.data_queue:
+                # Process and log the data from the queue
+                data_to_log = self.data_queue.pop(0)
+                self._write_to_file(data_to_log)
 
     def log_data(self, data):
-        with self.lock:
-            with open(self.filename, 'a') as f:
-                f.write(','.join(map(str, data)) + '\n')
+        """Add data to the queue and trigger logging."""
+        self.data_queue.append(data)
+
+    def stop(self):
+        """Safely stop the thread."""
+        self.running = False
+        self.wait()
+
+    def _write_to_file(self, data):
+        """Write data to the file."""
+        try:
+            with open(self.filename, 'a') as file:
+                file.write(','.join(map(str, data)) + '\n')
+        except Exception as e:
+            print(f"Error logging data: {e}")

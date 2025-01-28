@@ -313,6 +313,8 @@ class MainWindow(QMainWindow):
             print(f"Hardware items: {hardware_items}")
             self.com_port_combo.clear()
             self.com_port_combo.addItems(hardware_items)
+            # Select default INDEX of COM PORT
+            self.com_port_combo.setCurrentIndex(2) 
         except Exception as e:
             print(f"Error updating COM ports: {e}")
             self.com_port_combo.clear()

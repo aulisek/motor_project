@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget
+from data_controller import DAQController
 import csv
 import sys
 
@@ -12,7 +13,21 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.motor_controller = motor_controller
         self.ni_device = ni_device
-        self.plot_manager = PlotManager(self.ni_device, self.motor_controller)
+        self.plot_manager = PlotManager()
+        # Initialize DAQ Controller
+        self.sample_rate = 1000  # Default value for sampling rate
+        self.buffer_size = 100  # Default buffer size
+        self.daq_controller = DAQController(
+            sample_rate=self.sample_rate,
+            buffer_size=self.buffer_size
+        )
+        self.daq_controller.data_signal.connect(self.update_plot)
+
+        # Data storage
+        self.plot_data = []  # Resistance data
+        self.position_data = []  # Motor position data
+        self.data_to_save = []  # Combined data for exporting
+
         self.init_ui()
 
     def init_ui(self):
@@ -43,7 +58,7 @@ class MainWindow(QMainWindow):
         self.velocity_value_label = QLabel(f"{self.velocity_slider.value()}")
 
         # Position
-        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 3600, 3500)
+        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 360, 350)
         self.position_value_label = QLabel(f"{self.position_slider.value()}")
 
         self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
@@ -87,7 +102,7 @@ class MainWindow(QMainWindow):
         expert_tab = QWidget()
 
          # Sampling rate for saving data
-        self.sampling_rate_spinbox = self.create_spinbox(1, 10000, 1000)
+        self.sampling_rate_spinbox = self.create_spinbox(1, 1000, 1000)
 
         # GUI refresh rate
         self.gui_refresh_rate_spinbox = self.create_spinbox(10, 1000, 50)
@@ -206,8 +221,8 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Save Data")
 
         self.start_motor_button.clicked.connect(self.start_motion)
-        self.start_button.clicked.connect(self.plot_manager.start)
-        self.stop_button.clicked.connect(self.plot_manager.stop)
+        self.start_button.clicked.connect(self.start_data_acquisition)
+        self.stop_button.clicked.connect(self.stop_data_acquisition)
         self.save_button.clicked.connect(self.save_plot_data)
 
         button_layout = QHBoxLayout()
@@ -298,13 +313,51 @@ class MainWindow(QMainWindow):
         self.repetition_spinbox.setEnabled(enabled)
         self.start_button.setEnabled(enabled)
     
+    def start_data_acquisition(self):
+        """Start data acquisition."""
+        self.plot_data = []  # Clear plot buffer
+        self.position_data = []  # Clear motor position data buffer
+        self.data_to_save = []  # Clear export buffer
+        self.daq_controller.start()
+
+    def stop_data_acquisition(self):
+        """Stop data acquisition."""
+        self.daq_controller.stop()
+
+    def update_plot(self, resistance_data):
+        """Update the plot with new resistance and motor position data."""
+        # Append resistance data
+        self.plot_data.extend(resistance_data)
+
+        # Fetch motor position data from motor controller
+        motor_position = self.motor_controller.get_position()
+        self.position_data.append(motor_position)
+
+        # Combine data for saving
+        self.data_to_save.append((resistance_data, motor_position))
+
+        # Update resistance plot
+        self.plot_manager.update_resistance_plot(self.plot_data)
+
+        # Update motor position plot
+        self.plot_manager.update_position_plot(self.position_data)
+
+
     def save_plot_data(self):
-        """Prompt the user to select a file path and save the data."""
+        """Save collected data to a CSV file."""
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save Data", "", "CSV Files (*.csv);;All Files (*)"
         )
         if file_path:
-            self.plot_manager.save_data(file_path)
+            try:
+                with open(file_path, mode="w", newline="") as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["Resistance (Ohms)", "Motor Position (°)"])
+                    for resistance, position in self.data_to_save:
+                        writer.writerow([resistance, position])
+                QMessageBox.information(self, "Success", "Data saved successfully!")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save data: {e}")
 
     def update_com_ports(self):
         try:
@@ -334,27 +387,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(e))
 
 class PlotManager:
-    def __init__(self, ni_device, motor_controller):
-        self.ni_device = ni_device
-        self.motor_controller = motor_controller
-
-        # Timers
-        self.gui_timer = QTimer()
-        self.data_timer = QTimer()
-
-        # Data storage
-        self.data = []  # Electrode data
-        self.position_data = []  # Motor position data
-
-        # PyQtGraph Plots
-        self.data_plot = None
-        self.position_plot = None
+    def __init__(self):
         self.data_curve = None
         self.position_curve = None
-
-        # Configuration
-        self.gui_refresh_rate = 50  # 100 ms for GUI updates
-        self.data_save_rate = 50  # 1 second for storing data
 
     def setup_plots(self, data_widget: PlotWidget, position_widget: PlotWidget):
         """Setup PyQtGraph plots."""
@@ -372,46 +407,14 @@ class PlotManager:
         self.position_plot.setLabel("bottom", "Time (s)")
         self.position_curve = self.position_plot.plot(pen=pg.mkPen(color='r', width=2))
 
-    def start(self):
-        """Start real-time plotting and data storage with separate timers."""
-        self.gui_timer.timeout.connect(self.update_plot)
-        self.gui_timer.start(self.gui_refresh_rate)
 
-        self.data_timer.timeout.connect(self.record_data)
-        self.data_timer.start(self.data_save_rate)
+    def update_resistance_plot(self, resistance_data):
+        """Update the resistance data plot."""
+        self.data_curve.setData(resistance_data)
 
-    def stop(self):
-        """Stop both plotting and data recording."""
-        self.gui_timer.stop()
-        self.data_timer.stop()
-
-    def update_plot(self):
-        """Update the plots with new data from NI device and motor controller."""
-        # Plot the latest data
-        self.data_curve.setData(self.data)
-        self.position_curve.setData(self.position_data)
-
-    def record_data(self):
-        """Collect data from NI device and motor controller for storage."""
-        # Get data
-        electrode_value = self.ni_device.get_measurement()  
-        motor_position = self.motor_controller.get_position()  
-
-        # Store data
-        self.data.append(electrode_value)
-        self.position_data.append(motor_position)
-
-    def save_data(self, file_path):
-        """Save the recorded data to the specified CSV file."""
-        try:
-            with open(file_path, mode="w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Time", "Electrode Data", "Motor Position"])
-                for i, (e_val, m_pos) in enumerate(zip(self.data, self.position_data)):
-                    writer.writerow([i, e_val, m_pos])
-            print(f"Data saved to {file_path}.")
-        except Exception as e:
-            print(f"Error saving data: {str(e)}")
+    def update_position_plot(self, position_data):
+        """Update the motor position plot."""
+        self.position_curve.setData(position_data)    
 
 class MotionWorker(QObject):
     finished = pyqtSignal()

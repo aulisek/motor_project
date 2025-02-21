@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         self.ni_device = ni_device
         self.plot_manager = PlotManager()
         # Initialize DAQ Controller
-        self.sample_rate = 1000  # Default value for sampling rate
+        self.sample_rate = 50  # Default value for sampling rate
         self.buffer_size = 100  # Default buffer size
         self.daq_controller = DAQController(
             sample_rate=self.sample_rate,

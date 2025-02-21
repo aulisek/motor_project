@@ -26,7 +26,7 @@ class NIDevice:
 class DAQController(QThread):
     data_signal = pyqtSignal(list)  # Emit processed data as a list for GUI plotting
 
-    def __init__(self, device_name="Dev1", channel="ai1", sample_rate=1000, buffer_size=100):
+    def __init__(self, device_name="Dev1", channel="ai1", sample_rate=100, buffer_size=100):
         super().__init__()
         self.device_name = device_name
         self.channel = channel

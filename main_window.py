@@ -7,27 +7,17 @@ from pyqtgraph import PlotWidget
 from data_controller import DAQController
 import csv
 import sys
+import threading
+from queue import Queue
+from collections import deque
+from datetime import datetime
 
 class MainWindow(QMainWindow):
     def __init__(self, motor_controller, ni_device):
         super().__init__()
         self.motor_controller = motor_controller
         self.ni_device = ni_device
-        self.plot_manager = PlotManager()
-        # Initialize DAQ Controller
-        self.sample_rate = 50  # Default value for sampling rate
-        self.buffer_size = 100  # Default buffer size
-        self.daq_controller = DAQController(
-            sample_rate=self.sample_rate,
-            buffer_size=self.buffer_size
-        )
-        self.daq_controller.data_signal.connect(self.update_plot)
-
-        # Data storage
-        self.plot_data = []  # Resistance data
-        self.position_data = []  # Motor position data
-        self.data_to_save = []  # Combined data for exporting
-
+        self.plot_manager = PlotManager(self.ni_device, self.motor_controller)
         self.init_ui()
 
     def init_ui(self):
@@ -49,6 +39,9 @@ class MainWindow(QMainWindow):
         # Set central widget
         self.setCentralWidget(self.tab_widget)
 
+    def init_daq(self):
+        self.daq_controller = DAQController()
+    
     def create_basic_tab(self):
         # Basic tab layout
         basic_tab = QWidget()
@@ -58,10 +51,10 @@ class MainWindow(QMainWindow):
         self.velocity_value_label = QLabel(f"{self.velocity_slider.value()}")
 
         # Position
-        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 360, 350)
+        self.position_slider, self.position_spinbox = self.create_slider_spinbox_pair(0, 20, 10)
         self.position_value_label = QLabel(f"{self.position_slider.value()}")
 
-        self.repetition_spinbox = self.create_spinbox(0, 1000, 10)
+        self.repetition_spinbox = self.create_spinbox(0, 10000, 10)
         
         self.status_label = QLabel("Set values and press Start.")
 
@@ -79,7 +72,7 @@ class MainWindow(QMainWindow):
 
         # Position layout
         position_layout = QVBoxLayout()
-        position_layout.addWidget(QLabel("Desired Angle (0-360°):"))
+        position_layout.addWidget(QLabel("Desired Angle (0-20°):"))
         position_slider_layout = QHBoxLayout()
         position_slider_layout.addWidget(self.position_slider)
         position_slider_layout.addWidget(self.position_spinbox)
@@ -102,16 +95,8 @@ class MainWindow(QMainWindow):
         expert_tab = QWidget()
 
          # Sampling rate for saving data
-        self.sampling_rate_spinbox = self.create_spinbox(1, 1000, 1000)
-
-        # GUI refresh rate
-        self.gui_refresh_rate_spinbox = self.create_spinbox(10, 1000, 50)
-
-         # File path selection
-        self.file_path_label = QLabel("No file selected")
-        self.select_file_button = QPushButton("Select File")
-        self.select_file_button.clicked.connect(self.select_file)
-
+        self.sampling_rate_spinbox = self.create_spinbox(1, 50, 2)
+        
         self.refresh_ports_button = QPushButton("Refresh Ports")
         self.refresh_ports_button.clicked.connect(self.update_com_ports)
 
@@ -121,7 +106,6 @@ class MainWindow(QMainWindow):
          # COM port selection
         self.com_port_combo = QComboBox()
         self.update_com_ports()
-
         
         # Acceleration
         self.acceleration_slider, self.acceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
@@ -139,17 +123,6 @@ class MainWindow(QMainWindow):
         sampling_rate_layout = QVBoxLayout()
         sampling_rate_layout.addWidget(QLabel("Sampling Rate for Data Saving (Hz):"))
         sampling_rate_layout.addWidget(self.sampling_rate_spinbox)
-
-        # GUI refresh rate layout
-        gui_rate_layout = QVBoxLayout()
-        gui_rate_layout.addWidget(QLabel("GUI Refresh Rate (ms):"))
-        gui_rate_layout.addWidget(self.gui_refresh_rate_spinbox)
-
-        # File selection layout
-        file_selection_layout = QVBoxLayout()
-        file_selection_layout.addWidget(QLabel("Selected File Path:"))
-        file_selection_layout.addWidget(self.file_path_label)
-        file_selection_layout.addWidget(self.select_file_button)
 
         # COM port layout
         com_port_layout = QVBoxLayout()
@@ -178,8 +151,6 @@ class MainWindow(QMainWindow):
         slider_layout.addLayout(deceleration_layout)
 
         main_layout.addLayout(sampling_rate_layout)
-        main_layout.addLayout(gui_rate_layout)
-        main_layout.addLayout(file_selection_layout)
         main_layout.addLayout(com_port_layout)
         main_layout.addLayout(slider_layout)
         main_layout.addWidget(self.status_label)
@@ -190,14 +161,11 @@ class MainWindow(QMainWindow):
         # Connections
         self.acceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.acceleration_slider, self.acceleration_spinbox))
         self.deceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.deceleration_slider, self.deceleration_spinbox))
+        # convert Hz to ms
+        self.sampling_rate_spinbox.valueChanged.connect(lambda: self.plot_manager.set_save_rate(self.sampling_rate_spinbox.value()))
 
         return expert_tab
     
-    def select_file(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Select File", "", "CSV Files (*.csv);;All Files (*)")
-        if file_path:
-            self.file_path_label.setText(file_path)
-
     def create_plot_tab(self):
         # Create the plot tab
         plot_tab = QWidget()
@@ -215,21 +183,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.position_widget)
 
         # Add controls
+        self.set_home_button = QPushButton("Set HOME")
         self.start_motor_button = QPushButton("Start Motion")
-        self.start_button = QPushButton("Start Plotting")
-        self.stop_button = QPushButton("Stop Plotting")
-        self.save_button = QPushButton("Save Data")
+        self.stop_motion_button = QPushButton("Stop Motion")
+        self.start_daq_button = QPushButton("Start DAQ")
+        self.stop_daq_button = QPushButton("STOP DAQ")
 
         self.start_motor_button.clicked.connect(self.start_motion)
-        self.start_button.clicked.connect(self.start_data_acquisition)
-        self.stop_button.clicked.connect(self.stop_data_acquisition)
-        self.save_button.clicked.connect(self.save_plot_data)
+        self.set_home_button.clicked.connect(self.motor_controller.set_home_position)
+        self.stop_motion_button.clicked.connect(self.motor_controller.stop_movement)
+        self.start_daq_button.clicked.connect(self.plot_manager.start_acquisition)
+        self.stop_daq_button.clicked.connect(self.plot_manager.stop_acquisition)
 
         button_layout = QHBoxLayout()
+        button_layout.addWidget(self.set_home_button)
         button_layout.addWidget(self.start_motor_button)
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.stop_button)
-        button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.stop_motion_button)
+        button_layout.addWidget(self.start_daq_button)
+        button_layout.addWidget(self.stop_daq_button)
         layout.addLayout(button_layout)
 
         plot_tab.setLayout(layout)
@@ -266,7 +237,9 @@ class MainWindow(QMainWindow):
 
     def start_motion(self):
         prof_velocity = self.velocity_slider.value()
-        target_position1 = self.position_slider.value() * 10
+        # angle for rotation in 10th degrees (3600=one round)
+        angle = self.position_slider.value() * 10
+        target_position1 = 3600-angle
         repetitions = self.repetition_spinbox.value()
         max_acceleration = 5000 
         prof_acceleration = 5000  
@@ -311,53 +284,8 @@ class MainWindow(QMainWindow):
         self.velocity_slider.setEnabled(enabled)
         self.position_slider.setEnabled(enabled)
         self.repetition_spinbox.setEnabled(enabled)
-        self.start_button.setEnabled(enabled)
-    
-    def start_data_acquisition(self):
-        """Start data acquisition."""
-        self.plot_data = []  # Clear plot buffer
-        self.position_data = []  # Clear motor position data buffer
-        self.data_to_save = []  # Clear export buffer
-        self.daq_controller.start()
-
-    def stop_data_acquisition(self):
-        """Stop data acquisition."""
-        self.daq_controller.stop()
-
-    def update_plot(self, resistance_data):
-        """Update the plot with new resistance and motor position data."""
-        # Append resistance data
-        self.plot_data.extend(resistance_data)
-
-        # Fetch motor position data from motor controller
-        motor_position = self.motor_controller.get_position()
-        self.position_data.append(motor_position)
-
-        # Combine data for saving
-        self.data_to_save.append((resistance_data, motor_position))
-
-        # Update resistance plot
-        self.plot_manager.update_resistance_plot(self.plot_data)
-
-        # Update motor position plot
-        self.plot_manager.update_position_plot(self.position_data)
-
-
-    def save_plot_data(self):
-        """Save collected data to a CSV file."""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Data", "", "CSV Files (*.csv);;All Files (*)"
-        )
-        if file_path:
-            try:
-                with open(file_path, mode="w", newline="") as file:
-                    writer = csv.writer(file)
-                    writer.writerow(["Resistance (Ohms)", "Motor Position (°)"])
-                    for resistance, position in self.data_to_save:
-                        writer.writerow([resistance, position])
-                QMessageBox.information(self, "Success", "Data saved successfully!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save data: {e}")
+        #self.stop_motion_button.setEnabled(enabled)
+        self.set_home_button.setEnabled(enabled)
 
     def update_com_ports(self):
         try:
@@ -366,8 +294,6 @@ class MainWindow(QMainWindow):
             print(f"Hardware items: {hardware_items}")
             self.com_port_combo.clear()
             self.com_port_combo.addItems(hardware_items)
-            # Select default INDEX of COM PORT
-            self.com_port_combo.setCurrentIndex(2) 
         except Exception as e:
             print(f"Error updating COM ports: {e}")
             self.com_port_combo.clear()
@@ -387,34 +313,90 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(e))
 
 class PlotManager:
-    def __init__(self):
-        self.data_curve = None
-        self.position_curve = None
+    def __init__(self, ni_device, motor_controller):
+        self.ni_device = ni_device
+        self.motor_controller = motor_controller
+        self.daq_controller = DAQController("Dev1", "ai1", 500, self.motor_controller)
 
-    def setup_plots(self, data_widget: PlotWidget, position_widget: PlotWidget):
+        # Data buffers for voltage and position
+        self.position_buffer = deque(maxlen=500)
+        self.voltage_buffer = deque(maxlen=500)
+
+        # Configuration
+        self.data_save_rate = 500  # ms
+
+    def setup_plots(self, data_widget, position_widget):
         """Setup PyQtGraph plots."""
         # Electrode Data Plot
         self.data_plot = data_widget
         self.data_plot.setTitle("Electrode Data")
-        self.data_plot.setLabel("left", "Voltage (V)")
-        self.data_plot.setLabel("bottom", "Time (s)")
-        self.data_curve = self.data_plot.plot(pen=pg.mkPen(color='b', width=2))
+        self.data_plot.setLabel("left", "Resistance (Ω)")
+        self.data_plot.setLabel("bottom", "Sample count")
+        self.data_plot.showGrid(x=True, y=True)
+        self.data_curve = self.data_plot.plot(
+            pen=pg.mkPen(color='r', width=1),  # Blue line with width=2
+            symbol='+',  # Circle marker at each data point
+            symbolSize=8,  # Marker size
+            symbolBrush='w'  # Red color for points
+        )
 
         # Motor Position Plot
         self.position_plot = position_widget
         self.position_plot.setTitle("Motor Position")
         self.position_plot.setLabel("left", "Angle (°)")
-        self.position_plot.setLabel("bottom", "Time (s)")
-        self.position_curve = self.position_plot.plot(pen=pg.mkPen(color='r', width=2))
+        self.position_plot.setLabel("bottom", "Sample count")
+        self.position_plot.showGrid(x=True, y=True)
+        self.position_curve = self.position_plot.plot(
+            pen=pg.mkPen(color='b', width=1),  # Blue line with width=2
+            symbol='+',  # Circle marker at each data point
+            symbolSize=8,  # Marker size
+            symbolBrush='w'  # Red color for points
+        )
+
+    def update_plot(self):
+        """Update the plots with the latest data."""
+        # Plot the latest data: voltage vs. timestamp (x-axis in seconds)
+        self.data_curve.setData(self.voltage_buffer)
+        self.position_curve.setData(self.position_buffer)
+
+    def handle_new_data(self, timestamp, position, voltage):
+        """Handle new data from DAQ thread."""
+        self.voltage_buffer.append(voltage)
+        self.position_buffer.append(position)
+        
+        # Update the plot immediately with new data
+        self.update_plot()
+
+    def browse_file(self):
+        """Open a file dialog and suggest a default name based on date and time."""
+        default_filename = f"measurement_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        file_name, _ = QFileDialog.getSaveFileName(
+            None, "Select File", default_filename, "CSV Files (*.csv);;All Files (*)"
+        )
+        if file_name:
+            self.file_path = file_name
+        return file_name
+
+    def start_acquisition(self):
+        """Start DAQ measurement and data saving."""
+        # Start DAQ controller
+        self.daq_controller.data_signal.connect(self.handle_new_data)
+        self.daq_controller.start()
+
+    def set_save_rate(self, rate):
+        """Set the rate at which data is saved to the file."""
+        self.data_save_rate = rate
+        self.daq_controller.change_sample_rate(rate)
 
 
-    def update_resistance_plot(self, resistance_data):
-        """Update the resistance data plot."""
-        self.data_curve.setData(resistance_data)
+    def stop_acquisition(self):
+        """Stop DAQ measurement and data saving."""
+        self.daq_controller.stop()
 
-    def update_position_plot(self, position_data):
-        """Update the motor position plot."""
-        self.position_curve.setData(position_data)    
+    def closeEvent(self, event):
+        """Ensure proper cleanup when closing the window."""
+        self.stop_acquisition()
+        event.accept()
 
 class MotionWorker(QObject):
     finished = pyqtSignal()

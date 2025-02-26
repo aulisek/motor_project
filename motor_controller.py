@@ -64,7 +64,6 @@ class MotorController:
     def stop_running_program(self, device_handle):
         """Stop any running NanoJ program."""
         self.nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
-        
 
     def execute_motion(self, home_position, target_position1, target_position2, repetitions):
         self.enable_voltage()
@@ -100,7 +99,7 @@ class MotorController:
         # 0x6082 - Maximum end Velocity
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
         # counter clockwise
-  
+          
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
@@ -120,23 +119,8 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        #output_channel_index = 0x01  # Output 1
-        #divider_value = 0x0B03  # Position Actual Value with Divider 4 and control bit 3
-        # Write the value to configure the output
-        self.nanolib_helper.write_number(self.device_handle, 0x0003, Nanolib.OdIndex(0x3252, 0x01), 16)
-        # Step 1: Activate routing
-        self.nanolib_helper.write_number(self.device_handle, 0x3250, Nanolib.OdIndex(0x3252, 0x01), 16)  # Activate routing
-
-        # Step 2: Route encoder signal (with divider 4) to Output 1
-        self.nanolib_helper.write_number(self.device_handle, 0x0905, Nanolib.OdIndex(0x3252, 0x02), 16)  # 04XXh + 0005h
-
-        # Step 3: Set control bit 5 in 60FE:01 to switch the signal on
-        self.nanolib_helper.write_number(self.device_handle, 0x20, Nanolib.OdIndex(0x60FE, 0x01), 32)  # Turn on output by setting bit 5
-
-        # Optional: Turn the signal off by clearing bit 5
-        
-        return position_value / 10
-        
+        #position_value = 10
+        return position_value /10
 
     def collect_position_data(self, position, data_queue):
         """Callback function to collect position data in queue."""
@@ -166,3 +150,24 @@ class MotorController:
         """Stop the movement."""
         self.nanolib_helper.disconnect_device(self.device_handle)
         self.nanolib_helper.close_bus_hardware(bus_hw_id)
+    
+    def set_home_position(self):
+        """Set the current position as the home position."""
+        # Step 1: Read the current position
+        current_position = self.get_position()*10
+        print(f"Current Position before homing: {current_position}")
+        # Step 2: Calculate the home offset
+        desired_home_position = 3600  # The position you want to be treated as home
+        home_offset = current_position - desired_home_position
+        print(f"Setting Home Offset to: {home_offset}")
+        # Step 3: Write the new home offset to 0x607C
+        #self.nanolib_helper.write_number(self.device_handle, int(home_offset), Nanolib.OdIndex(0x607C, 0x00), 32)
+        # Step 4: Execute homing command (17) without moving the motor
+        #self.nanolib_helper.write_number(self.device_handle, 17, Nanolib.OdIndex(0x2291, 0x04), 8)
+        # Step 5: Verify the new actual position
+        new_position = self.get_position()*10
+        print(f"New Actual Position after homing: {new_position}")
+
+    def stop_movement(self):
+        """Stop the movement."""
+        self.nanolib_helper.write_number(self.device_handle, 2, Nanolib.OdIndex(0x2291, 0x04), 8)

@@ -5,6 +5,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from nidaqmx.constants import AcquisitionType
 import random
 import time
+import serial
 
 
 
@@ -25,20 +26,22 @@ class NIDevice:
         #return odpor
 
 class DAQController(QThread):
-    data_signal = pyqtSignal(float, float, float)  # timestamp, position, resistance
+    data_signal = pyqtSignal(float, float, float,float,float)  # timestamp, position, resistance
 
     def __init__(self, device_name, ai_channel, sample_rate, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
         self.device_name = device_name
         self.ai_channel = ai_channel
-        self.sample_rate = 50  # Hz
+        self.sample_rate = 5  # Hz
         self.running = False
+        self.ser = serial.Serial('COM5', 9600, timeout=0.1)
 
     def run(self):
         """DAQ On-Demand Sampling with Precise Timing (Compensates for Processing Time)"""
         self.running = True
-        sample_interval = 1.0 / self.sample_rate  # Time between samples (seconds)
+        #sample_interval = 1.0 / self.sample_rate  # Time between samples (seconds)
+        sample_interval = 0.2
         next_sample_time = time.perf_counter()  # High-precision timer
 
         with nidaqmx.Task() as ai_task, open("measurement.csv", "a") as f:
@@ -52,7 +55,15 @@ class DAQController(QThread):
 
                 while self.running:
                     start_time = time.perf_counter()  # Measure execution start time
-                    
+                    line = self.ser.readline().decode().strip()
+                    if line:
+                        try:
+                            temperature, humidity = map(float, line.split(","))
+                            #print(f"Teplota: {temperature} °C, Vlhkost: {humidity} %") 
+                        except ValueError:
+                            #print("Connect sensor")
+                            temperature, humidity = 999, 999
+
                     # Read data
                     timestamp = time.time()
                     voltage = ai_task.read()  # Immediate (On-Demand) read
@@ -60,19 +71,20 @@ class DAQController(QThread):
                     resistance = (10000 * (5 - voltage) / voltage)
 
                     # Emit data to update GUI and save
-                    self.data_signal.emit(timestamp, position, resistance)
+                    self.data_signal.emit(timestamp, position, resistance, temperature, humidity)
                     
                     # Save data to file (appending without reopening)
-                    f.write(f"{timestamp},{position},{resistance}\n")
+                    f.write(f"{timestamp},{position},{resistance},{temperature},{humidity}\n")
                     f.flush()  # Ensures data is written immediately to prevent data loss
 
                     # Calculate elapsed time and adjust sleep accordingly
                     elapsed_time = time.perf_counter() - start_time
                     next_sample_time += sample_interval
                     sleep_time = max(0, next_sample_time - time.perf_counter() - elapsed_time)
-
+                    #print(sleep_time)
                     if sleep_time > 0:
                         time.sleep(sleep_time)
+                    
 
             except nidaqmx.errors.DaqError as e:
                 print(f"DAQ Error: {e}")

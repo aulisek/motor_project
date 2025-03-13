@@ -241,10 +241,10 @@ class MainWindow(QMainWindow):
         angle = self.position_slider.value() * 10
         target_position1 = 3600-angle
         repetitions = self.repetition_spinbox.value()
-        max_acceleration = 5000 
-        prof_acceleration = 5000  
-        max_deceleration = 500 
-        prof_deceleration = 500 
+        max_acceleration = 30 
+        prof_acceleration = 30
+        max_deceleration = 30
+        prof_deceleration = 30
         # prof_velocity = 100
         end_velocity = 0 
         home_position = 3600  # Pocatecni pozice

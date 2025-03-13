@@ -1,6 +1,7 @@
 from nanolib_helper import Nanolib, NanolibHelper
 #import threading
 import queue
+import time
 
 class MotorController:
     def __init__(self):
@@ -74,6 +75,7 @@ class MotorController:
         for _ in range(repetitions):
             # Starting position
             self.move_to_position(target_position1)
+            time.sleep(2)
             # Ending position
             self.move_to_position(target_position2)
         self.stop_motor()
@@ -154,19 +156,52 @@ class MotorController:
     def set_home_position(self):
         """Set the current position as the home position."""
         # Step 1: Read the current position
-        current_position = self.get_position()*10
-        print(f"Current Position before homing: {current_position}")
+        #current_position = self.get_position()*10
+        #print(f"Current Position before homing: {current_position}")
         # Step 2: Calculate the home offset
-        desired_home_position = 3600  # The position you want to be treated as home
-        home_offset = current_position - desired_home_position
-        print(f"Setting Home Offset to: {home_offset}")
+        #desired_home_position = 3600  # The position you want to be treated as home
+        #home_offset = current_position - desired_home_position
+        #print(f"Setting Home Offset to: {home_offset}")
         # Step 3: Write the new home offset to 0x607C
         #self.nanolib_helper.write_number(self.device_handle, int(home_offset), Nanolib.OdIndex(0x607C, 0x00), 32)
         # Step 4: Execute homing command (17) without moving the motor
         #self.nanolib_helper.write_number(self.device_handle, 17, Nanolib.OdIndex(0x2291, 0x04), 8)
         # Step 5: Verify the new actual position
-        new_position = self.get_position()*10
-        print(f"New Actual Position after homing: {new_position}")
+        #new_position = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x607C, 0x00))
+        #print(f"New Actual Position after homing: {new_position}")
+        """Set the current position as the home position without moving the motor."""
+
+        # 1. Uložení aktuálního režimu řízení
+        current_mode = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6060, 0x00))
+        self.nanolib_helper.write_number(self.device_handle, 6, Nanolib.OdIndex(0x6060, 0x00), 8)
+        
+        # 3. Získání aktuální pozice
+        current_position = self.get_position()*10
+        print(f"Current Position before homing: {current_position}")
+
+        # 4. Výpočet a zápis offsetu
+        desired_home_position = 3600  # Chceme, aby aktuální pozice odpovídala 3600
+        home_offset = 3600
+        self.nanolib_helper.write_number(self.device_handle, home_offset, Nanolib.OdIndex(0x607C, 0x00), 32)
+        print(f"Home offset set to: {home_offset}")
+        self.nanolib_helper.write_number(self.device_handle, 0b10000, Nanolib.OdIndex(0x6040, 0x00), 16)
+        # 5. Ověření zápisu offsetu
+        read_offset = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x607C, 0x00))
+        print(f"Verified home offset: {read_offset}")
+        self.nanolib_helper.write_number(self.device_handle, 15, Nanolib.OdIndex(0x6040, 0x00), 16)  # Enable operation
+        # 6. Přepnutí zpět do původního režimu řízení
+        #self.nanolib_helper.write_number(self.device_handle, current_mode, Nanolib.OdIndex(0x6060, 0x00), 8)
+
+        self.enable_voltage()
+        self.switch_on()
+        self.enable_operation()
+        self.set_profile_position_mode()
+        # 7. Ověření nové polohy – měla by odpovídat 3600
+        new_position = self.get_position()
+        print(f"New Actual Position after setting home: {new_position}")
+
+        self.stop_motor()
+
 
     def stop_movement(self):
         """Stop the movement."""

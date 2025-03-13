@@ -31,17 +31,17 @@ class DAQController(QThread):
     def __init__(self, device_name, ai_channel, sample_rate, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
-        self.device_name = device_name
-        self.ai_channel = ai_channel
+        self.device_name = "Dev2"
+        self.ai_channel = "ai4"
         self.sample_rate = 5  # Hz
         self.running = False
-        self.ser = serial.Serial('COM5', 9600, timeout=0.1)
+        self.ser = serial.Serial('COM6', 9600, timeout=0.05)
 
     def run(self):
         """DAQ On-Demand Sampling with Precise Timing (Compensates for Processing Time)"""
         self.running = True
         #sample_interval = 1.0 / self.sample_rate  # Time between samples (seconds)
-        sample_interval = 0.2
+        sample_interval = 0.1
         next_sample_time = time.perf_counter()  # High-precision timer
 
         with nidaqmx.Task() as ai_task, open("measurement.csv", "a") as f:
@@ -68,7 +68,10 @@ class DAQController(QThread):
                     timestamp = time.time()
                     voltage = ai_task.read()  # Immediate (On-Demand) read
                     position = self.motor_controller.get_position()  # Get motor position
-                    resistance = (10000 * (5 - voltage) / voltage)
+                    #resistance = (10000 * (5 - voltage) / voltage)
+                    resistor_value = 540000
+                    resistance = (resistor_value * voltage)/(5-voltage)
+                    #resistance = voltage
 
                     # Emit data to update GUI and save
                     self.data_signal.emit(timestamp, position, resistance, temperature, humidity)

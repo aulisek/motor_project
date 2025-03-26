@@ -66,18 +66,22 @@ class MotorController:
         """Stop any running NanoJ program."""
         self.nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
-    def execute_motion(self, home_position, target_position1, target_position2, repetitions):
+    def execute_motion(self, home_position, positions, delays, repetitions):
         self.enable_voltage()
         self.switch_on()
         self.enable_operation()
         self.set_profile_position_mode()
         self.move_to_position(home_position)
+        
         for _ in range(repetitions):
-            # Starting position
-            self.move_to_position(target_position1)
-            time.sleep(2)
-            # Ending position
-            self.move_to_position(target_position2)
+            for i, position in enumerate(positions):
+                self.move_to_position(position)  # Move to the current position
+
+                # Handle the corresponding delay for each position
+                # If delays are fewer than positions, default remaining delays to 0
+                delay = delays[i] if i < len(delays) else 0  
+                time.sleep(delay / 1000)  # Convert ms to seconds
+                
         self.stop_motor()
         return 1
 

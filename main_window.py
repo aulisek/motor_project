@@ -323,7 +323,7 @@ class MainWindow(QMainWindow):
 
         # **Disable UI and show status**
         self.toggle_inputs(False)
-        self.status_label.setText("Processing... Please wait.")
+        #self.status_label.setText("Processing... Please wait.")
 
         # **Set motion parameters**
         self.motor_controller.set_motion_parameters(
@@ -343,44 +343,44 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.status_updated.connect(self.status_label.setText)
+      #  self.worker.status_updated.connect(self.status_label.setText)
         self.worker.finished.connect(lambda: self.toggle_inputs(True))
 
         # **Start motion thread**
         self.thread.start()
         
-        def toggle_inputs(self, enabled):
+    def toggle_inputs(self, enabled):
             # Now these sliders and buttons are accessible because they are instance variables
-            self.velocity_slider.setEnabled(enabled)
-            self.position_slider.setEnabled(enabled)
-            self.repetition_spinbox.setEnabled(enabled)
+            #self.velocity_slider.setEnabled(enabled)
+            #self.position_slider.setEnabled(enabled)
+            #self.repetition_spinbox.setEnabled(enabled)
             #self.stop_motion_button.setEnabled(enabled)
-            self.set_home_button.setEnabled(enabled)
+        self.set_home_button.setEnabled(enabled)
 
-        def update_com_ports(self):
-            try:
-                bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
-                print(f"Bus hardware IDs: {bus_hw}")
-                print(f"Hardware items: {hardware_items}")
-                self.com_port_combo.clear()
-                self.com_port_combo.addItems(hardware_items)
-            except Exception as e:
-                print(f"Error updating COM ports: {e}")
-                self.com_port_combo.clear()
-                self.com_port_combo.addItem("No hardware found")
+    def update_com_ports(self):
+        try:
+            bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
+            print(f"Bus hardware IDs: {bus_hw}")
+            print(f"Hardware items: {hardware_items}")
+            self.com_port_combo.clear()
+            self.com_port_combo.addItems(hardware_items)
+        except Exception as e:
+            print(f"Error updating COM ports: {e}")
+            self.com_port_combo.clear()
+            self.com_port_combo.addItem("No hardware found")
 
-        def select_com_port(self):
-            try:
-                # Get selected index
-                selected_index = self.com_port_combo.currentIndex()
-                if selected_index < 0:
-                    raise Exception("No hardware selected.")
+    def select_com_port(self):
+        try:
+            # Get selected index
+            selected_index = self.com_port_combo.currentIndex()
+            if selected_index < 0:
+                raise Exception("No hardware selected.")
                 
-                # Initialize motor with selected hardware
-                self.motor_controller.initialize_motor(selected_index)
-                QMessageBox.information(self, "Success", "Motor initialized successfully!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
+            # Initialize motor with selected hardware
+            self.motor_controller.initialize_motor(selected_index)
+            QMessageBox.information(self, "Success", "Motor initialized successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
 
 class PlotManager:
     def __init__(self, ni_device, motor_controller):

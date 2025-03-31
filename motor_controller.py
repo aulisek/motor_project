@@ -81,7 +81,7 @@ class MotorController:
                 # If delays are fewer than positions, default remaining delays to 0
                 delay = delays[i] if i < len(delays) else 0  
                 time.sleep(delay / 1000)  # Convert ms to seconds
-                
+
         self.stop_motor()
         return 1
 
@@ -210,3 +210,13 @@ class MotorController:
     def stop_movement(self):
         """Stop the movement."""
         self.nanolib_helper.write_number(self.device_handle, 2, Nanolib.OdIndex(0x2291, 0x04), 8)
+
+    def set_position_window(self, position):
+        """Specifies a range symmetrical to the target position within which that target is considered having been met"""
+        self.nanolib_helper.write_number(self.device_handle, position, Nanolib.OdIndex(0x6067, 0x00), 32)
+    
+    def set_position_time(self, time_ms):
+        """The current position must be within the "Position Window" (6067h) for this time in milliseconds for the target
+position to be considered having been met"""
+        self.nanolib_helper.write_number(self.device_handle, time_ms, Nanolib.OdIndex(0x6068, 0x00), 32)
+

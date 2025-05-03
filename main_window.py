@@ -15,11 +15,10 @@ from collections import deque
 from datetime import datetime
 
 class MainWindow(QMainWindow):
-    def __init__(self, motor_controller, ni_device):
+    def __init__(self, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
-        self.ni_device = ni_device
-        self.plot_manager = PlotManager(self.ni_device, self.motor_controller)
+        self.plot_manager = PlotManager(self.motor_controller)
         self.init_ui()
 
     def init_ui(self):
@@ -383,10 +382,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(e))
 
 class PlotManager:
-    def __init__(self, ni_device, motor_controller):
-        self.ni_device = ni_device
+    def __init__(self, motor_controller):
         self.motor_controller = motor_controller
-        self.daq_controller = DAQController("Dev1", "ai1", 500, self.motor_controller)
+        self.daq_controller = DAQController(self.motor_controller, 500)
 
         # Data buffers for voltage and position
         self.position_buffer = deque(maxlen=500)

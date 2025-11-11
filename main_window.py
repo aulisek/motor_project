@@ -1,23 +1,18 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTabWidget, QFileDialog, QComboBox, QMessageBox, QInputDialog, QLineEdit, QFormLayout, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsEllipseItem, QGraphicsLineItem, QFormLayout, QSizePolicy, QScrollArea, QGridLayout
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider,
+    QSpinBox, QTabWidget, QComboBox, QMessageBox, QFormLayout
 )
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject, QPointF, pyqtSignal
-from PyQt5.QtGui import QPen, QMouseEvent
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget
 from data_controller import DAQController
-import csv
-import sys
-import threading
-import math
-from queue import Queue
 from collections import deque
-from datetime import datetime
 
 class MainWindow(QMainWindow):
     def __init__(self, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
+        self.status_label = QLabel("")
         self.plot_manager = PlotManager(self.motor_controller)
         self.init_ui()
 
@@ -40,9 +35,6 @@ class MainWindow(QMainWindow):
         # Set central widget
         self.setCentralWidget(self.tab_widget)
 
-    def init_daq(self):
-        self.daq_controller = DAQController()
-    
     def create_basic_tab(self):
         """Create the UI layout with dynamic position inputs."""
 
@@ -78,6 +70,9 @@ class MainWindow(QMainWindow):
         self.positions_container.setLayout(self.positions_layout)
         self.layout.addWidget(self.positions_container)
 
+        self.status_label.setText("")
+        self.layout.addWidget(self.status_label)
+
         self.create_position_inputs()  # Initialize with default value
 
         return tab_widget
@@ -102,11 +97,11 @@ class MainWindow(QMainWindow):
 
             # **Angle Selector**
             angle_slider = QSlider(Qt.Orientation.Horizontal)
-            angle_slider.setRange(-180, 180)
+            angle_slider.setRange(0, 360)
             angle_slider.setValue(0)
 
             angle_spinbox = QSpinBox()
-            angle_spinbox.setRange(-180, 180)
+            angle_spinbox.setRange(0, 360)
             angle_spinbox.setValue(0)
 
             angle_slider.valueChanged.connect(angle_spinbox.setValue)
@@ -254,13 +249,6 @@ class MainWindow(QMainWindow):
         return plot_tab
 
     @staticmethod
-    def create_slider(min_value, max_value, initial_value):
-        slider = QSlider(Qt.Horizontal)
-        slider.setRange(min_value, max_value)
-        slider.setValue(initial_value)
-        return slider
-
-    @staticmethod
     def create_spinbox(min_value, max_value, initial_value):
         spinbox = QSpinBox()
         spinbox.setRange(min_value, max_value)
@@ -322,7 +310,7 @@ class MainWindow(QMainWindow):
 
         # **Disable UI and show status**
         self.toggle_inputs(False)
-        #self.status_label.setText("Processing... Please wait.")
+        self.status_label.setText("Preparing motion...")
 
         # **Set motion parameters**
         self.motor_controller.set_motion_parameters(
@@ -342,19 +330,35 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
-      #  self.worker.status_updated.connect(self.status_label.setText)
+        self.worker.status_updated.connect(self.status_label.setText)
         self.worker.finished.connect(lambda: self.toggle_inputs(True))
 
         # **Start motion thread**
         self.thread.start()
         
     def toggle_inputs(self, enabled):
-            # Now these sliders and buttons are accessible because they are instance variables
-            #self.velocity_slider.setEnabled(enabled)
-            #self.position_slider.setEnabled(enabled)
-            #self.repetition_spinbox.setEnabled(enabled)
-            #self.stop_motion_button.setEnabled(enabled)
-        self.set_home_button.setEnabled(enabled)
+        widgets_to_toggle = [
+            getattr(self, 'set_home_button', None),
+            getattr(self, 'start_motor_button', None),
+            getattr(self, 'stop_motion_button', None),
+            self.velocity_input,
+            self.repetitions_input,
+            self.num_positions_spinbox,
+        ]
+
+        for widget in widgets_to_toggle:
+            if widget is None:
+                continue
+            if widget is self.stop_motion_button and not enabled:
+                widget.setEnabled(True)
+            else:
+                widget.setEnabled(enabled)
+
+        for i in range(self.positions_layout.count()):
+            item = self.positions_layout.itemAt(i)
+            widget = item.widget() if item else None
+            if widget is not None:
+                widget.setEnabled(enabled)
 
     def update_com_ports(self):
         try:
@@ -381,14 +385,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
+    def closeEvent(self, event):
+        """Ensure running background tasks are stopped when the window closes."""
+        self.plot_manager.stop_acquisition()
+        super().closeEvent(event)
+
 class PlotManager:
     def __init__(self, motor_controller):
         self.motor_controller = motor_controller
         self.daq_controller = DAQController(self.motor_controller, 500)
+        self.daq_controller.data_signal.connect(self.handle_new_data)
 
         # Data buffers for voltage and position
         self.position_buffer = deque(maxlen=500)
-        self.voltage_buffer = deque(maxlen=500)
+        self.resistance_buffer = deque(maxlen=500)
 
         # Configuration
         self.data_save_rate = 500  # ms
@@ -424,47 +434,32 @@ class PlotManager:
     def update_plot(self):
         """Update the plots with the latest data."""
         # Plot the latest data: voltage vs. timestamp (x-axis in seconds)
-        self.data_curve.setData(self.voltage_buffer)
+        self.data_curve.setData(self.resistance_buffer)
         self.position_curve.setData(self.position_buffer)
 
-    def handle_new_data(self, timestamp, position, voltage):
+    def handle_new_data(self, timestamp, position, resistance, humidity, temperature):
         """Handle new data from DAQ thread."""
-        self.voltage_buffer.append(voltage)
+        self.resistance_buffer.append(resistance)
         self.position_buffer.append(position)
         
         # Update the plot immediately with new data
         self.update_plot()
 
-    def browse_file(self):
-        """Open a file dialog and suggest a default name based on date and time."""
-        default_filename = f"measurement_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-        file_name, _ = QFileDialog.getSaveFileName(
-            None, "Select File", default_filename, "CSV Files (*.csv);;All Files (*)"
-        )
-        if file_name:
-            self.file_path = file_name
-        return file_name
-
     def start_acquisition(self):
         """Start DAQ measurement and data saving."""
-        # Start DAQ controller
-        self.daq_controller.data_signal.connect(self.handle_new_data)
-        self.daq_controller.start()
+        if not self.daq_controller.isRunning():
+            self.daq_controller.start()
 
     def set_save_rate(self, rate):
         """Set the rate at which data is saved to the file."""
-        self.data_save_rate = rate
-        self.daq_controller.change_sample_rate(rate)
+        safe_rate = max(1, int(rate))
+        self.data_save_rate = safe_rate
+        self.daq_controller.change_sample_rate(safe_rate)
 
 
     def stop_acquisition(self):
         """Stop DAQ measurement and data saving."""
         self.daq_controller.stop()
-
-    def closeEvent(self, event):
-        """Ensure proper cleanup when closing the window."""
-        self.stop_acquisition()
-        event.accept()
 
 class MotionWorker(QObject):
     finished = pyqtSignal()
@@ -481,10 +476,13 @@ class MotionWorker(QObject):
     def run(self):
         try:
             self.status_updated.emit("Executing motion...")
-            self.motor_controller.execute_motion(
+            result = self.motor_controller.execute_motion(
                 self.home_position, self.positions, self.delays, self.repetitions
             )
-            self.status_updated.emit("Motion completed successfully.")
+            if result == 0:
+                self.status_updated.emit("Motion stopped by user.")
+            else:
+                self.status_updated.emit("Motion completed successfully.")
         except Exception as e:
             self.status_updated.emit(f"Error during motion: {str(e)}")
         finally:

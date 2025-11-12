@@ -6,6 +6,7 @@ class MotorController:
     def __init__(self):
         self.nanolib_helper = NanolibHelper()
         self._stop_event = threading.Event()
+        self.initialized = False
         #setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
@@ -39,6 +40,7 @@ class MotorController:
         self.stop_running_program(device_handle)
 
         self.device_handle = device_handle
+        self.initialized = True
         # baud rate setting
         self.nanolib_helper.write_number(self.device_handle, 256000, Nanolib.OdIndex(0x202A, 0x00), 32)
         #self.nanolib_helper.write_number(self.device_handle, 0, Nanolib.OdIndex(0x3502, 0x00), 32)
@@ -225,3 +227,6 @@ class MotorController:
         """The current position must be within the "Position Window" (6067h) for this time in milliseconds for the target
 position to be considered having been met"""
         self.nanolib_helper.write_number(self.device_handle, time_ms, Nanolib.OdIndex(0x6068, 0x00), 32)
+
+    def is_initialized(self):
+        return self.initialized

@@ -36,6 +36,9 @@ class PlotTab(QWidget):
     set_home_requested = pyqtSignal()
     daq_rate_changed = pyqtSignal(str)
     positions_changed = pyqtSignal(list, list, list)
+    refresh_ports_requested = pyqtSignal()
+    connect_port_requested = pyqtSignal(int)
+    sampling_rate_changed = pyqtSignal(int)
 
     def __init__(self, plot_manager, parent=None):
         super().__init__(parent)
@@ -56,6 +59,25 @@ class PlotTab(QWidget):
         self.status_label = QLabel("")
         sidebar_layout.addWidget(self.status_label)
 
+        sampling_layout = QVBoxLayout()
+        sampling_layout.addWidget(QLabel("Sampling Rate for Data Saving (Hz):"))
+        self.sampling_rate_spinbox = QSpinBox()
+        self.sampling_rate_spinbox.setRange(1, 50)
+        self.sampling_rate_spinbox.setValue(2)
+        self.sampling_rate_spinbox.valueChanged.connect(lambda value: self.sampling_rate_changed.emit(int(value)))
+        sampling_layout.addWidget(self.sampling_rate_spinbox)
+        sidebar_layout.addLayout(sampling_layout)
+
+        motor_status_layout = QHBoxLayout()
+        self.motor_status_indicator = QLabel()
+        self.motor_status_indicator.setFixedSize(16, 16)
+        self.motor_status_indicator.setStyleSheet("background-color: #c0392b; border: 1px solid #96281b;")
+        motor_status_layout.addWidget(self.motor_status_indicator)
+        self.motor_status_text = QLabel("Motor not initialized")
+        motor_status_layout.addWidget(self.motor_status_text)
+        motor_status_layout.addStretch()
+        sidebar_layout.addLayout(motor_status_layout)
+
         repetitions_layout = QHBoxLayout()
         repetitions_layout.addWidget(QLabel("Repetitions:"))
         self.repetitions_spinbox = QSpinBox()
@@ -64,6 +86,19 @@ class PlotTab(QWidget):
         self.repetitions_spinbox.setSuffix(" cycles")
         repetitions_layout.addWidget(self.repetitions_spinbox)
         sidebar_layout.addLayout(repetitions_layout)
+
+        self.init_controls_container = QWidget()
+        init_layout = QVBoxLayout(self.init_controls_container)
+        init_layout.addWidget(QLabel("Initialize Motor:"))
+        self.init_com_combo = QComboBox()
+        init_layout.addWidget(self.init_com_combo)
+        self.init_refresh_button = QPushButton("Refresh Ports")
+        self.init_refresh_button.clicked.connect(self.refresh_ports_requested.emit)
+        init_layout.addWidget(self.init_refresh_button)
+        self.init_connect_button = QPushButton("Connect selected Device")
+        self.init_connect_button.clicked.connect(lambda: self.connect_port_requested.emit(self.init_com_combo.currentIndex()))
+        init_layout.addWidget(self.init_connect_button)
+        sidebar_layout.addWidget(self.init_controls_container)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
@@ -271,6 +306,9 @@ class PlotTab(QWidget):
         counts, degrees, delays = self._extract_path_data()
         self.positions_changed.emit(counts, degrees, delays)
 
+    def emit_current_sampling_rate(self):
+        self.sampling_rate_changed.emit(int(self.sampling_rate_spinbox.value()))
+
     def _emit_positions_changed(self):
         counts, degrees, delays = self._extract_path_data()
         self.positions_changed.emit(counts, degrees, delays)
@@ -351,3 +389,20 @@ class PlotTab(QWidget):
             return f"{minutes}m {secs:02d}s"
         hours, minutes = divmod(minutes, 60)
         return f"{hours}h {minutes:02d}m"
+
+    def set_motor_initialized(self, initialized: bool):
+        if initialized:
+            self.motor_status_indicator.setStyleSheet("background-color: #27ae60; border: 1px solid #1e8449;")
+            self.motor_status_text.setText("Motor initialized")
+            self.init_controls_container.hide()
+        else:
+            self.motor_status_indicator.setStyleSheet("background-color: #c0392b; border: 1px solid #96281b;")
+            self.motor_status_text.setText("Motor not initialized")
+            self.init_controls_container.show()
+
+    def set_com_ports(self, ports):
+        self.init_com_combo.clear()
+        if ports:
+            self.init_com_combo.addItems(ports)
+        else:
+            self.init_com_combo.addItem("No hardware found")

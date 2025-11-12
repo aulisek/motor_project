@@ -5,7 +5,6 @@ from motion_worker import MotionWorker
 from plot_manager import PlotManager
 from ramp_preview import RampPreviewWidget
 from tabs.plot_tab import PlotTab
-from tabs.expert_tab import ExpertTab
 
 
 class MainWindow(QMainWindow):
@@ -29,27 +28,26 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget()
 
         self.plot_tab = PlotTab(self.plot_manager)
-        self.expert_tab = ExpertTab()
         self.ramp_preview_tab = RampPreviewWidget(self.motor_controller)
 
         self.tab_widget.addTab(self.plot_tab, "Data plots")
-        self.tab_widget.addTab(self.expert_tab, "Expert Options")
         self.tab_widget.addTab(self.ramp_preview_tab, "Ramp Preview")
 
         self.setCentralWidget(self.tab_widget)
+        self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
 
     def _wire_signals(self) -> None:
         self.plot_tab.start_motion_requested.connect(self.start_motion)
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
         self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
+        self.plot_tab.sampling_rate_changed.connect(self.plot_manager.set_save_rate)
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
-
-        self.expert_tab.refresh_ports_requested.connect(self.update_com_ports)
-        self.expert_tab.connect_port_requested.connect(self.select_com_port)
-        self.expert_tab.sampling_rate_changed.connect(self.plot_manager.set_save_rate)
+        self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)
+        self.plot_tab.connect_port_requested.connect(self.select_com_port)
         self.plot_tab.emit_current_daq_rate()
         self.plot_tab.emit_current_positions()
+        self.plot_tab.emit_current_sampling_rate()
 
     def _get_ramp_preview_motion_params(self):
         widget = getattr(self, "ramp_preview_tab", None)
@@ -152,10 +150,10 @@ class MainWindow(QMainWindow):
             bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
             print(f"Bus hardware IDs: {bus_hw}")
             print(f"Hardware items: {hardware_items}")
-            self.expert_tab.set_com_ports(hardware_items)
+            self.plot_tab.set_com_ports(hardware_items)
         except Exception as exc:
             print(f"Error updating COM ports: {exc}")
-            self.expert_tab.set_com_ports([])
+            self.plot_tab.set_com_ports([])
 
     def select_com_port(self, selected_index: int):
         try:
@@ -163,8 +161,10 @@ class MainWindow(QMainWindow):
                 raise Exception("No hardware selected.")
             self.motor_controller.initialize_motor(selected_index)
             QMessageBox.information(self, "Success", "Motor initialized successfully!")
+            self.plot_tab.set_motor_initialized(True)
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
+            self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
 
     def closeEvent(self, event):
         self.plot_manager.stop_acquisition()

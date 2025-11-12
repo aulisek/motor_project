@@ -62,3 +62,6 @@ class PlotManager:
 
     def stop_acquisition(self):
         self.daq_controller.stop()
+
+    def set_daq_sample_rate(self, rate_key: str):
+        self.daq_controller.set_ads1263_sample_rate(rate_key)

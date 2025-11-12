@@ -9,6 +9,52 @@ import os
 
 from ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
 
+
+def _parse_rate_value(name: str) -> float:
+    """Convert rate tokens like ADS1263_16d6SPS into float SPS values."""
+    raw = name.split("_")[1]
+    raw = raw.replace("d", ".").replace("SPS", "")
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.0
+
+
+def _format_rate_label(value: float) -> str:
+    if value >= 1000:
+        return f"{value / 1000:.1f} kSPS"
+    return f"{value:.1f} SPS"
+
+
+ADS1263_SAMPLE_RATES = {
+    "ADS1263_38400SPS": {"code": 0xF, "sps": 38400.0},
+    "ADS1263_19200SPS": {"code": 0xE, "sps": 19200.0},
+    "ADS1263_14400SPS": {"code": 0xD, "sps": 14400.0},
+    "ADS1263_7200SPS": {"code": 0xC, "sps": 7200.0},
+    "ADS1263_4800SPS": {"code": 0xB, "sps": 4800.0},
+    "ADS1263_2400SPS": {"code": 0xA, "sps": 2400.0},
+    "ADS1263_1200SPS": {"code": 0x9, "sps": 1200.0},
+    "ADS1263_400SPS": {"code": 0x8, "sps": 400.0},
+    "ADS1263_100SPS": {"code": 0x7, "sps": 100.0},
+    "ADS1263_60SPS": {"code": 0x6, "sps": 60.0},
+    "ADS1263_50SPS": {"code": 0x5, "sps": 50.0},
+    "ADS1263_20SPS": {"code": 0x4, "sps": 20.0},
+    "ADS1263_16d6SPS": {"code": 0x3, "sps": 16.6},
+    "ADS1263_10SPS": {"code": 0x2, "sps": 10.0},
+    "ADS1263_5SPS": {"code": 0x1, "sps": 5.0},
+    "ADS1263_2d5SPS": {"code": 0x0, "sps": 2.5},
+}
+
+DEFAULT_ADS1263_RATE_KEY = "ADS1263_400SPS"
+
+ADS1263_SAMPLE_RATE_LABELS = [
+    (key, _format_rate_label(values["sps"])) for key, values in ADS1263_SAMPLE_RATES.items()
+]
+
+ADS1256_RATE_VALUES = {
+    name: _parse_rate_value(name) for name in ADS1256_DRATE_E.keys()
+}
+
 class DAQController(QThread):
     data_signal = pyqtSignal(float, float, float, float, float)  # timestamp, position, resistance, humidity, temperature
 
@@ -20,15 +66,13 @@ class DAQController(QThread):
         self.gui_rate_hz = max(1, int(gui_rate))
         self._config_lock = threading.Lock()
         self._apply_timing_config()
+        self._ads_rate_key = DEFAULT_ADS1263_RATE_KEY
 
         # === Init ADS1256 ===
         self.adc = ADS1256()
         if self.adc.ADS1256_init() != 0:
             raise RuntimeError("ADS1256 initialization failed.")
-        self.adc.ADS1256_ConfigADC(
-            ADS1256_GAIN_E['ADS1256_GAIN_1'],
-            ADS1256_DRATE_E['ADS1256_10SPS']  # or another value as needed
-        )
+        self._configure_adc_rate(self._ads_rate_key)
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
         self.adc_channel = 2  # e.g., AIN0
 
@@ -157,3 +201,21 @@ class DAQController(QThread):
         with self._config_lock:
             self.sample_rate_hz = max(1, int(rate_hz))
             self._apply_timing_config()
+
+    def _configure_adc_rate(self, rate_key: str):
+        """Map the requested ADS1263 rate to the closest ADS1256 configuration."""
+        target = ADS1263_SAMPLE_RATES.get(rate_key, ADS1263_SAMPLE_RATES[DEFAULT_ADS1263_RATE_KEY])["sps"]
+        best_ads1256 = min(ADS1256_RATE_VALUES.items(), key=lambda item: abs(item[1] - target))[0]
+        self.adc.ADS1256_ConfigADC(
+            ADS1256_GAIN_E['ADS1256_GAIN_1'],
+            ADS1256_DRATE_E[best_ads1256]
+        )
+
+    def set_ads1263_sample_rate(self, rate_key: str):
+        """Public hook to adjust sampling speed using ADS1263-style presets."""
+        if rate_key not in ADS1263_SAMPLE_RATES:
+            rate_key = DEFAULT_ADS1263_RATE_KEY
+        self._ads_rate_key = rate_key
+        target = ADS1263_SAMPLE_RATES[rate_key]["sps"]
+        self.change_sample_rate(max(1, int(round(target))))
+        self._configure_adc_rate(rate_key)

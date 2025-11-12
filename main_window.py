@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider,
-    QSpinBox, QTabWidget, QComboBox, QMessageBox, QFormLayout
+    QSpinBox, QTabWidget, QComboBox, QMessageBox, QFormLayout, QProgressBar
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
+import time
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget
 from data_controller import DAQController
 from collections import deque
+from ramp_preview import RampPreviewWidget
 
 class MainWindow(QMainWindow):
     def __init__(self, motor_controller):
@@ -27,10 +29,12 @@ class MainWindow(QMainWindow):
         self.basic_tab = self.create_basic_tab()
         self.plot_tab = self.create_plot_tab()
         self.expert_tab = self.create_expert_tab()
+        self.ramp_preview_tab = RampPreviewWidget(self.motor_controller)
 
         self.tab_widget.addTab(self.basic_tab, "Basic Options")
         self.tab_widget.addTab(self.plot_tab, "Data plots")
         self.tab_widget.addTab(self.expert_tab, "Expert Options")
+        self.tab_widget.addTab(self.ramp_preview_tab, "Ramp Preview")
 
         # Set central widget
         self.setCentralWidget(self.tab_widget)
@@ -270,16 +274,43 @@ class MainWindow(QMainWindow):
         spinbox.valueChanged.connect(slider.setValue)
         return slider, spinbox
 
+    def _get_ramp_preview_motion_params(self):
+        """Read acceleration/deceleration values from the Ramp Preview tab."""
+        widget = getattr(self, "ramp_preview_tab", None)
+        if widget is None:
+            return None
+
+        acc_value = getattr(widget, "spin_acc", None)
+        dec_value = getattr(widget, "spin_dec", None)
+        if acc_value is None or dec_value is None:
+            return None
+
+        try:
+            acc = int(round(acc_value.value()))
+            dec = int(round(dec_value.value()))
+        except Exception:
+            return None
+
+        return {"acc": acc, "dec": dec}
+
     def start_motion(self):
         """Start the motion sequence using multiple positions and delays."""
         
+        #prof_velocity = self.velocity_input.value()  # Get velocity
         prof_velocity = self.velocity_input.value()  # Get velocity
         repetitions = self.repetitions_input.value()  # Get number of repetitions
 
-        max_acceleration = 30
-        prof_acceleration = 30
-        max_deceleration = 30
-        prof_deceleration = 30
+        preview_params = self._get_ramp_preview_motion_params()
+        if preview_params:
+            max_acceleration = preview_params["acc"]
+            prof_acceleration = preview_params["acc"]
+            max_deceleration = preview_params["dec"]
+            prof_deceleration = preview_params["dec"]
+        else:
+            max_acceleration = 300
+            prof_acceleration = 300
+            max_deceleration = 300
+            prof_deceleration = 300
         end_velocity = 0
         home_position = 3600  # Initial position
 

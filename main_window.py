@@ -1,34 +1,37 @@
-from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider,
-    QSpinBox, QTabWidget, QComboBox, QMessageBox, QFormLayout, QProgressBar
-)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
-import time
-import pyqtgraph as pg
-from pyqtgraph import PlotWidget
-from data_controller import DAQController
-from collections import deque
+from PyQt5.QtCore import QThread
+from PyQt5.QtWidgets import QMainWindow, QTabWidget, QMessageBox
+
+from motion_worker import MotionWorker
+from plot_manager import PlotManager
 from ramp_preview import RampPreviewWidget
+from tabs.basic_tab import BasicTab
+from tabs.plot_tab import PlotTab
+from tabs.expert_tab import ExpertTab
+
 
 class MainWindow(QMainWindow):
+    """Top-level window that wires together the modular tab widgets."""
+
     def __init__(self, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
-        self.status_label = QLabel("")
         self.plot_manager = PlotManager(self.motor_controller)
-        self.init_ui()
+        self.motion_thread = None
+        self.motion_worker = None
 
-    def init_ui(self):
+        self._init_ui()
+        self._wire_signals()
+        self.update_com_ports()
+
+    def _init_ui(self) -> None:
         self.setWindowTitle("Motor Controller GUI")
         self.setGeometry(100, 100, 500, 300)
 
-        # Tab widget
         self.tab_widget = QTabWidget()
 
-        # Tabs
-        self.basic_tab = self.create_basic_tab()
-        self.plot_tab = self.create_plot_tab()
-        self.expert_tab = self.create_expert_tab()
+        self.basic_tab = BasicTab()
+        self.plot_tab = PlotTab(self.plot_manager)
+        self.expert_tab = ExpertTab()
         self.ramp_preview_tab = RampPreviewWidget(self.motor_controller)
 
         self.tab_widget.addTab(self.basic_tab, "Basic Options")
@@ -36,246 +39,18 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.expert_tab, "Expert Options")
         self.tab_widget.addTab(self.ramp_preview_tab, "Ramp Preview")
 
-        # Set central widget
         self.setCentralWidget(self.tab_widget)
 
-    def create_basic_tab(self):
-        """Create the UI layout with dynamic position inputs."""
+    def _wire_signals(self) -> None:
+        self.plot_tab.start_motion_requested.connect(self.start_motion)
+        self.plot_tab.stop_motion_requested.connect(self.stop_motion)
+        self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
 
-        tab_widget = QWidget()
-        self.layout = QVBoxLayout(tab_widget)
-
-        # **Step 1: Global Settings (Velocity & Repetitions)**
-        global_inputs_layout = QFormLayout()
-
-        self.velocity_input = QSpinBox()
-        self.velocity_input.setRange(1, 1000)
-        self.velocity_input.setSuffix(" mm/s")
-        global_inputs_layout.addRow("Velocity:", self.velocity_input)
-
-        self.repetitions_input = QSpinBox()
-        self.repetitions_input.setRange(1, 100)
-        global_inputs_layout.addRow("Repetitions:", self.repetitions_input)
-
-        self.layout.addLayout(global_inputs_layout)
-
-        # **Step 2: Number of Positions Selector**
-        self.num_positions_label = QLabel("Number of Positions:")
-        self.num_positions_spinbox = QSpinBox()
-        self.num_positions_spinbox.setRange(1, 10)
-        self.num_positions_spinbox.valueChanged.connect(self.create_position_inputs)
-
-        self.layout.addWidget(self.num_positions_label)
-        self.layout.addWidget(self.num_positions_spinbox)
-
-        # **Step 3: Container for Dynamic Inputs**
-        self.positions_container = QWidget()
-        self.positions_layout = QVBoxLayout()  
-        self.positions_container.setLayout(self.positions_layout)
-        self.layout.addWidget(self.positions_container)
-
-        self.status_label.setText("")
-        self.layout.addWidget(self.status_label)
-
-        self.create_position_inputs()  # Initialize with default value
-
-        return tab_widget
-
-    def create_position_inputs(self):
-        """Dynamically create position input fields and properly clear the layout."""
-
-        # **Step 1: Remove old widgets properly**
-        while self.positions_layout.count():
-            item = self.positions_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        num_positions = self.num_positions_spinbox.value()
-
-        for i in range(num_positions):
-            position_widget = QWidget()
-            position_layout = QHBoxLayout(position_widget)
-
-            # **Label**
-            label = QLabel(f"Position {i+1}:")
-
-            # **Angle Selector**
-            angle_slider = QSlider(Qt.Orientation.Horizontal)
-            angle_slider.setRange(0, 360)
-            angle_slider.setValue(0)
-
-            angle_spinbox = QSpinBox()
-            angle_spinbox.setRange(0, 360)
-            angle_spinbox.setValue(0)
-
-            angle_slider.valueChanged.connect(angle_spinbox.setValue)
-            angle_spinbox.valueChanged.connect(angle_slider.setValue)
-
-            # **Delay Input (Slider + Spinbox)**
-            delay_slider = QSlider(Qt.Orientation.Horizontal)
-            delay_slider.setRange(0, 5000)
-            delay_slider.setValue(500)
-
-            delay_spinbox = QSpinBox()
-            delay_spinbox.setRange(0, 5000)
-            delay_spinbox.setValue(500)
-            delay_spinbox.setSuffix(" ms")
-
-            delay_slider.valueChanged.connect(delay_spinbox.setValue)
-            delay_spinbox.valueChanged.connect(delay_slider.setValue)
-
-            # **Add widgets to layout**
-            position_layout.addWidget(label)
-            position_layout.addWidget(angle_slider)
-            position_layout.addWidget(angle_spinbox)
-            position_layout.addWidget(QLabel("Delay:"))
-            position_layout.addWidget(delay_slider)
-            position_layout.addWidget(delay_spinbox)
-
-            self.positions_layout.addWidget(position_widget)
-
-        self.positions_container.update()
-
-    def create_expert_tab(self):
-              # Basic tab layout
-        expert_tab = QWidget()
-
-         # Sampling rate for saving data
-        self.sampling_rate_spinbox = self.create_spinbox(1, 50, 2)
-        
-        self.refresh_ports_button = QPushButton("Refresh Ports")
-        self.refresh_ports_button.clicked.connect(self.update_com_ports)
-
-        self.select_port_button = QPushButton("Connect selected Device")
-        self.select_port_button.clicked.connect(self.select_com_port)
-
-         # COM port selection
-        self.com_port_combo = QComboBox()
-        self.update_com_ports()
-        
-        # Acceleration
-        self.acceleration_slider, self.acceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
-        self.acceleration_value_label = QLabel(f"{self.acceleration_slider.value()}")
-
-        # Deceleration
-        self.deceleration_slider, self.deceleration_spinbox = self.create_slider_spinbox_pair(10, 10000, 5000)
-        self.deceleration_value_label = QLabel(f"{self.deceleration_slider.value()}")
-
-        # Layouts
-        main_layout = QVBoxLayout()
-        slider_layout = QHBoxLayout()
-
-        # Sampling rate layout
-        sampling_rate_layout = QVBoxLayout()
-        sampling_rate_layout.addWidget(QLabel("Sampling Rate for Data Saving (Hz):"))
-        sampling_rate_layout.addWidget(self.sampling_rate_spinbox)
-
-        # COM port layout
-        com_port_layout = QVBoxLayout()
-        com_port_layout.addWidget(QLabel("Select COM Port:"))
-        com_port_layout.addWidget(self.com_port_combo)
-        com_port_layout.addWidget(self.refresh_ports_button)
-        com_port_layout.addWidget(self.select_port_button)
-
-        # Acceleration layout
-        acceleration_layout = QVBoxLayout()
-        acceleration_layout.addWidget(QLabel("Profile Acceleration (units/s²):"))
-        acceleration_slider_layout = QHBoxLayout()
-        acceleration_slider_layout.addWidget(self.acceleration_slider)
-        acceleration_slider_layout.addWidget(self.acceleration_spinbox)
-        acceleration_layout.addLayout(acceleration_slider_layout)
-
-        # Deceleration layout
-        deceleration_layout = QVBoxLayout()
-        deceleration_layout.addWidget(QLabel("Profile Deceleration (units/s²):"))
-        deceleration_slider_layout = QHBoxLayout()
-        deceleration_slider_layout.addWidget(self.deceleration_slider)
-        deceleration_slider_layout.addWidget(self.deceleration_spinbox)
-        deceleration_layout.addLayout(deceleration_slider_layout)
-
-        slider_layout.addLayout(acceleration_layout)
-        slider_layout.addLayout(deceleration_layout)
-
-        main_layout.addLayout(sampling_rate_layout)
-        main_layout.addLayout(com_port_layout)
-        main_layout.addLayout(slider_layout)
-        #main_layout.addWidget(self.status_label)
-        
-
-        expert_tab.setLayout(main_layout)
-
-        # Connections
-        self.acceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.acceleration_slider, self.acceleration_spinbox))
-        self.deceleration_slider.valueChanged.connect(lambda: self.sync_slider_spinbox(self.deceleration_slider, self.deceleration_spinbox))
-        # convert Hz to ms
-        self.sampling_rate_spinbox.valueChanged.connect(lambda: self.plot_manager.set_save_rate(self.sampling_rate_spinbox.value()))
-
-        return expert_tab
-    
-    def create_plot_tab(self):
-        # Create the plot tab
-        plot_tab = QWidget()
-        layout = QVBoxLayout()
-
-        # Create PyQtGraph widgets
-        self.data_widget = PlotWidget()
-        self.position_widget = PlotWidget()
-
-        # Setup plots
-        self.plot_manager.setup_plots(self.data_widget, self.position_widget)
-
-        # Add widgets to layout
-        layout.addWidget(self.data_widget)
-        layout.addWidget(self.position_widget)
-
-        # Add controls
-        self.set_home_button = QPushButton("Set HOME")
-        self.start_motor_button = QPushButton("Start Motion")
-        self.stop_motion_button = QPushButton("Stop Motion")
-        self.start_daq_button = QPushButton("Start DAQ")
-        self.stop_daq_button = QPushButton("STOP DAQ")
-
-        self.start_motor_button.clicked.connect(self.start_motion)
-        self.set_home_button.clicked.connect(self.motor_controller.set_home_position)
-        self.stop_motion_button.clicked.connect(self.motor_controller.stop_movement)
-        self.start_daq_button.clicked.connect(self.plot_manager.start_acquisition)
-        self.stop_daq_button.clicked.connect(self.plot_manager.stop_acquisition)
-
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.set_home_button)
-        button_layout.addWidget(self.start_motor_button)
-        button_layout.addWidget(self.stop_motion_button)
-        button_layout.addWidget(self.start_daq_button)
-        button_layout.addWidget(self.stop_daq_button)
-        layout.addLayout(button_layout)
-
-        plot_tab.setLayout(layout)
-        return plot_tab
-
-    @staticmethod
-    def create_spinbox(min_value, max_value, initial_value):
-        spinbox = QSpinBox()
-        spinbox.setRange(min_value, max_value)
-        spinbox.setValue(initial_value)
-        return spinbox
-
-    def create_slider_spinbox_pair(self, min_value, max_value, initial_value):
-        """Creates a synchronized slider and spinbox pair."""
-        slider = QSlider(Qt.Horizontal)
-        slider.setRange(min_value, max_value)
-        slider.setValue(initial_value)
-
-        spinbox = QSpinBox()
-        spinbox.setRange(min_value, max_value)
-        spinbox.setValue(initial_value)
-
-        # Synchronize slider and spinbox
-        slider.valueChanged.connect(spinbox.setValue)
-        spinbox.valueChanged.connect(slider.setValue)
-        return slider, spinbox
+        self.expert_tab.refresh_ports_requested.connect(self.update_com_ports)
+        self.expert_tab.connect_port_requested.connect(self.select_com_port)
+        self.expert_tab.sampling_rate_changed.connect(self.plot_manager.set_save_rate)
 
     def _get_ramp_preview_motion_params(self):
-        """Read acceleration/deceleration values from the Ramp Preview tab."""
         widget = getattr(self, "ramp_preview_tab", None)
         if widget is None:
             return None
@@ -294,11 +69,11 @@ class MainWindow(QMainWindow):
         return {"acc": acc, "dec": dec}
 
     def start_motion(self):
-        """Start the motion sequence using multiple positions and delays."""
-        
-        #prof_velocity = self.velocity_input.value()  # Get velocity
-        prof_velocity = self.velocity_input.value()  # Get velocity
-        repetitions = self.repetitions_input.value()  # Get number of repetitions
+        try:
+            plan = self.basic_tab.build_motion_plan()
+        except ValueError as exc:
+            self.basic_tab.set_status(str(exc))
+            return
 
         preview_params = self._get_ramp_preview_motion_params()
         if preview_params:
@@ -311,210 +86,68 @@ class MainWindow(QMainWindow):
             prof_acceleration = 300
             max_deceleration = 300
             prof_deceleration = 300
+
         end_velocity = 0
-        home_position = 3600  # Initial position
+        home_position = 3600
 
-        # **Extract positions and delays from UI**
-        positions = []
-        delays = []
+        self._set_motion_ui_enabled(False)
+        self.basic_tab.set_status("Preparing motion...")
 
-        for i in range(self.positions_layout.count()):
-            item = self.positions_layout.itemAt(i)
-            if item and item.widget():
-                position_widget = item.widget()
-                inputs = position_widget.findChildren(QSpinBox)
-
-                if len(inputs) >= 2:
-                    angle_spinbox = inputs[0]
-                    delay_spinbox = inputs[1]
-
-                    angle = angle_spinbox.value() * 10  # Convert to 10th degrees
-                    delay = delay_spinbox.value()  # Get delay in ms
-
-                    positions.append(3600 - angle)  # Convert to motor position
-                    delays.append(delay)
-
-        # **Ensure valid data**
-        if not positions:
-            self.status_label.setText("No positions defined!")
-            return
-
-        # **Disable UI and show status**
-        self.toggle_inputs(False)
-        self.status_label.setText("Preparing motion...")
-
-        # **Set motion parameters**
         self.motor_controller.set_motion_parameters(
-            max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
-            prof_velocity, end_velocity
+            max_acceleration,
+            prof_acceleration,
+            max_deceleration,
+            prof_deceleration,
+            plan.velocity,
+            end_velocity,
         )
 
-        # **Create thread and worker**
-        self.thread = QThread()
-        self.worker = MotionWorker(
-            self.motor_controller, home_position, positions, delays, repetitions
+        self.motion_thread = QThread()
+        self.motion_worker = MotionWorker(
+            self.motor_controller,
+            home_position,
+            plan.positions,
+            plan.delays,
+            plan.repetitions,
         )
-        self.worker.moveToThread(self.thread)
+        self.motion_worker.moveToThread(self.motion_thread)
 
-        # **Connect signals and slots**
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.status_updated.connect(self.status_label.setText)
-        self.worker.finished.connect(lambda: self.toggle_inputs(True))
+        self.motion_thread.started.connect(self.motion_worker.run)
+        self.motion_worker.finished.connect(self.motion_thread.quit)
+        self.motion_worker.finished.connect(self.motion_worker.deleteLater)
+        self.motion_thread.finished.connect(self.motion_thread.deleteLater)
+        self.motion_worker.status_updated.connect(self.basic_tab.set_status)
+        self.motion_worker.finished.connect(lambda: self._set_motion_ui_enabled(True))
 
-        # **Start motion thread**
-        self.thread.start()
-        
-    def toggle_inputs(self, enabled):
-        widgets_to_toggle = [
-            getattr(self, 'set_home_button', None),
-            getattr(self, 'start_motor_button', None),
-            getattr(self, 'stop_motion_button', None),
-            self.velocity_input,
-            self.repetitions_input,
-            self.num_positions_spinbox,
-        ]
+        self.motion_thread.start()
 
-        for widget in widgets_to_toggle:
-            if widget is None:
-                continue
-            if widget is self.stop_motion_button and not enabled:
-                widget.setEnabled(True)
-            else:
-                widget.setEnabled(enabled)
+    def _set_motion_ui_enabled(self, enabled: bool) -> None:
+        self.basic_tab.set_inputs_enabled(enabled)
+        self.plot_tab.set_motion_controls_enabled(enabled)
 
-        for i in range(self.positions_layout.count()):
-            item = self.positions_layout.itemAt(i)
-            widget = item.widget() if item else None
-            if widget is not None:
-                widget.setEnabled(enabled)
+    def stop_motion(self):
+        self.basic_tab.set_status("Stop requested...")
+        self.motor_controller.stop_movement()
 
     def update_com_ports(self):
         try:
             bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
             print(f"Bus hardware IDs: {bus_hw}")
             print(f"Hardware items: {hardware_items}")
-            self.com_port_combo.clear()
-            self.com_port_combo.addItems(hardware_items)
-        except Exception as e:
-            print(f"Error updating COM ports: {e}")
-            self.com_port_combo.clear()
-            self.com_port_combo.addItem("No hardware found")
+            self.expert_tab.set_com_ports(hardware_items)
+        except Exception as exc:
+            print(f"Error updating COM ports: {exc}")
+            self.expert_tab.set_com_ports([])
 
-    def select_com_port(self):
+    def select_com_port(self, selected_index: int):
         try:
-            # Get selected index
-            selected_index = self.com_port_combo.currentIndex()
-            if selected_index < 0:
+            if selected_index is None or selected_index < 0:
                 raise Exception("No hardware selected.")
-                
-            # Initialize motor with selected hardware
             self.motor_controller.initialize_motor(selected_index)
             QMessageBox.information(self, "Success", "Motor initialized successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     def closeEvent(self, event):
-        """Ensure running background tasks are stopped when the window closes."""
         self.plot_manager.stop_acquisition()
         super().closeEvent(event)
-
-class PlotManager:
-    def __init__(self, motor_controller):
-        self.motor_controller = motor_controller
-        self.daq_controller = DAQController(self.motor_controller, 500)
-        self.daq_controller.data_signal.connect(self.handle_new_data)
-
-        # Data buffers for voltage and position
-        self.position_buffer = deque(maxlen=500)
-        self.resistance_buffer = deque(maxlen=500)
-
-        # Configuration
-        self.data_save_rate = 500  # ms
-
-    def setup_plots(self, data_widget, position_widget):
-        """Setup PyQtGraph plots."""
-        # Electrode Data Plot
-        self.data_plot = data_widget
-        self.data_plot.setTitle("Electrode Data")
-        self.data_plot.setLabel("left", "Resistance (Ω)")
-        self.data_plot.setLabel("bottom", "Sample count")
-        self.data_plot.showGrid(x=True, y=True)
-        self.data_curve = self.data_plot.plot(
-            pen=pg.mkPen(color='r', width=1),  # Blue line with width=2
-            symbol='+',  # Circle marker at each data point
-            symbolSize=8,  # Marker size
-            symbolBrush='w'  # Red color for points
-        )
-
-        # Motor Position Plot
-        self.position_plot = position_widget
-        self.position_plot.setTitle("Motor Position")
-        self.position_plot.setLabel("left", "Angle (°)")
-        self.position_plot.setLabel("bottom", "Sample count")
-        self.position_plot.showGrid(x=True, y=True)
-        self.position_curve = self.position_plot.plot(
-            pen=pg.mkPen(color='b', width=1),  # Blue line with width=2
-            symbol='+',  # Circle marker at each data point
-            symbolSize=8,  # Marker size
-            symbolBrush='w'  # Red color for points
-        )
-
-    def update_plot(self):
-        """Update the plots with the latest data."""
-        # Plot the latest data: voltage vs. timestamp (x-axis in seconds)
-        self.data_curve.setData(self.resistance_buffer)
-        self.position_curve.setData(self.position_buffer)
-
-    def handle_new_data(self, timestamp, position, resistance, humidity, temperature):
-        """Handle new data from DAQ thread."""
-        self.resistance_buffer.append(resistance)
-        self.position_buffer.append(position)
-        
-        # Update the plot immediately with new data
-        self.update_plot()
-
-    def start_acquisition(self):
-        """Start DAQ measurement and data saving."""
-        if not self.daq_controller.isRunning():
-            self.daq_controller.start()
-
-    def set_save_rate(self, rate):
-        """Set the rate at which data is saved to the file."""
-        safe_rate = max(1, int(rate))
-        self.data_save_rate = safe_rate
-        self.daq_controller.change_sample_rate(safe_rate)
-
-
-    def stop_acquisition(self):
-        """Stop DAQ measurement and data saving."""
-        self.daq_controller.stop()
-
-class MotionWorker(QObject):
-    finished = pyqtSignal()
-    status_updated = pyqtSignal(str)
-
-    def __init__(self, motor_controller, home_position, positions, delays, repetitions):
-        super().__init__()
-        self.motor_controller = motor_controller
-        self.home_position = home_position
-        self.positions = positions  # List of target positions
-        self.delays = delays  # List of delays (in ms)
-        self.repetitions = repetitions
-
-    def run(self):
-        try:
-            self.status_updated.emit("Executing motion...")
-            result = self.motor_controller.execute_motion(
-                self.home_position, self.positions, self.delays, self.repetitions
-            )
-            if result == 0:
-                self.status_updated.emit("Motion stopped by user.")
-            else:
-                self.status_updated.emit("Motion completed successfully.")
-        except Exception as e:
-            self.status_updated.emit(f"Error during motion: {str(e)}")
-        finally:
-            self.finished.emit()

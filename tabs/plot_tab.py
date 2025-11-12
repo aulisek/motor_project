@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from PyQt5.QtCore import pyqtSignal, Qt
+import time
+
+from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -12,6 +14,7 @@ from PyQt5.QtWidgets import (
     QSpinBox,
     QComboBox,
     QToolButton,
+    QProgressBar,
 )
 from pyqtgraph import PlotWidget
 
@@ -52,6 +55,33 @@ class PlotTab(QWidget):
 
         self.status_label = QLabel("")
         sidebar_layout.addWidget(self.status_label)
+
+        repetitions_layout = QHBoxLayout()
+        repetitions_layout.addWidget(QLabel("Repetitions:"))
+        self.repetitions_spinbox = QSpinBox()
+        self.repetitions_spinbox.setRange(1, 1_000_000)
+        self.repetitions_spinbox.setValue(1)
+        self.repetitions_spinbox.setSuffix(" cycles")
+        repetitions_layout.addWidget(self.repetitions_spinbox)
+        sidebar_layout.addLayout(repetitions_layout)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setFormat("%v / %m cycles")
+        self.progress_bar.hide()
+        sidebar_layout.addWidget(self.progress_bar)
+
+        self.eta_label = QLabel("")
+        self.eta_label.hide()
+        sidebar_layout.addWidget(self.eta_label)
+
+        self.progress_timer = QTimer(self)
+        self.progress_timer.setInterval(200)
+        self.progress_timer.timeout.connect(self._update_progress_timer)
+        self._progress_total_duration = 0.0
+        self._progress_cycle_time = 0.0
+        self._progress_total_cycles = 0
+        self._progress_start_ts = 0.0
 
         self.add_position_button = QPushButton("Add Position")
         self.add_position_button.clicked.connect(self._add_position_row)
@@ -176,7 +206,11 @@ class PlotTab(QWidget):
         positions, delays = self._extract_positions_and_delays()
         if not positions:
             raise ValueError("No positions defined!")
-        return MotionPlan(positions=positions, delays=delays)
+        return MotionPlan(
+            positions=positions,
+            delays=delays,
+            repetitions=self.repetitions_spinbox.value(),
+        )
 
     def _extract_positions_and_delays(self) -> Tuple[List[int], List[int]]:
         positions_counts: List[int] = []
@@ -204,6 +238,7 @@ class PlotTab(QWidget):
 
     def set_position_inputs_enabled(self, enabled: bool) -> None:
         self.add_position_button.setEnabled(enabled)
+        self.repetitions_spinbox.setEnabled(enabled)
         for index in range(self.positions_layout.count()):
             item = self.positions_layout.itemAt(index)
             widget = item.widget() if item else None
@@ -262,3 +297,57 @@ class PlotTab(QWidget):
             positions_counts.append(3600 - int(round(angle_deg * 10)))
             delays_ms.append(delay_spinbox.value() if delay_spinbox else 0)
         return positions_counts, positions_degrees, delays_ms
+
+    def start_progress_tracking(self, cycle_time_s: float, total_cycles: int):
+        if cycle_time_s is None or cycle_time_s <= 0 or total_cycles <= 0:
+            self.stop_progress_tracking()
+            return
+        self._progress_cycle_time = float(cycle_time_s)
+        self._progress_total_cycles = int(total_cycles)
+        self._progress_total_duration = self._progress_cycle_time * self._progress_total_cycles
+        self._progress_start_ts = time.time()
+        self.progress_bar.setRange(0, self._progress_total_cycles)
+        self.progress_bar.setValue(0)
+        self.progress_bar.show()
+        self.eta_label.setText(f"ETA: {self._format_duration(self._progress_total_duration)}")
+        self.eta_label.show()
+        self.progress_timer.start()
+        self.set_progress_cycles(0)
+
+    def stop_progress_tracking(self):
+        self.progress_timer.stop()
+        self.progress_bar.hide()
+        self.eta_label.hide()
+        self._progress_total_duration = 0.0
+        self._progress_cycle_time = 0.0
+        self._progress_total_cycles = 0
+        self._progress_start_ts = 0.0
+        self.eta_label.setText("")
+        self.progress_bar.setValue(0)
+
+    def set_progress_cycles(self, completed_cycles: int):
+        if self._progress_total_cycles <= 0:
+            return
+        value = max(0, min(completed_cycles, self._progress_total_cycles))
+        self.progress_bar.setValue(value)
+        if value >= self._progress_total_cycles:
+            self.stop_progress_tracking()
+
+    def _update_progress_timer(self):
+        if self._progress_cycle_time <= 0 or self._progress_total_cycles <= 0:
+            self.stop_progress_tracking()
+            return
+        elapsed = max(0.0, time.time() - self._progress_start_ts)
+        remaining = max(0.0, self._progress_total_duration - elapsed)
+        self.eta_label.setText(f"ETA: {self._format_duration(remaining)}")
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        seconds = max(0, int(round(seconds)))
+        if seconds < 60:
+            return f"{seconds}s"
+        minutes, secs = divmod(seconds, 60)
+        if minutes < 60:
+            return f"{minutes}m {secs:02d}s"
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}h {minutes:02d}m"

@@ -43,7 +43,7 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, 256000, Nanolib.OdIndex(0x202A, 0x00), 32)
         #self.nanolib_helper.write_number(self.device_handle, 0, Nanolib.OdIndex(0x3502, 0x00), 32)
         #self.nanolib_helper.write_number(self.device_handle, 60640020, Nanolib.OdIndex(0x3502, 0x03), 32)
-
+        
 
     def get_bus_hardware(self):
         """Retrieve and select bus hardware."""
@@ -68,17 +68,18 @@ class MotorController:
         """Stop any running NanoJ program."""
         self.nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
-    def execute_motion(self, home_position, positions, delays, repetitions):
+    def execute_motion(self, home_position, positions, delays, repetitions, progress_callback=None):
         self._stop_event.clear()
         self.enable_voltage()
         self.switch_on()
         self.enable_operation()
         self.set_profile_position_mode()
         self.move_to_position(home_position)
+        self.nanolib_helper.write_number(self.device_handle, 0, Nanolib.OdIndex(0x6068, 0x00), 16)
 
         aborted = False
 
-        for _ in range(repetitions):
+        for cycle_idx in range(repetitions):
             if self._stop_event.is_set():
                 aborted = True
                 break
@@ -99,6 +100,11 @@ class MotorController:
 
             if aborted:
                 break
+            if progress_callback is not None:
+                try:
+                    progress_callback(cycle_idx + 1)
+                except Exception:
+                    pass
 
         self.stop_motor()
         return 0 if aborted else 1

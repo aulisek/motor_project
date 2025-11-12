@@ -92,6 +92,7 @@ class RampPreviewWidget(QWidget):
         self.motion_positions_counts = []
         self.motion_positions_deg = []
         self.motion_delays_ms = []
+        self.last_cycle_time_s = 0.0
         self._build_ui()
         self._wire_signals()
         self._recompute()
@@ -213,6 +214,7 @@ class RampPreviewWidget(QWidget):
             self.curve_v.setData([], [])
             self.curve_s.setData([], [])
             self.lbl_summary.setText("Add at least one position in the Data plots tab to preview the ramp.")
+            self.last_cycle_time_s = 0.0
             return
 
         time_segments = []
@@ -281,6 +283,7 @@ class RampPreviewWidget(QWidget):
             self.curve_v.setData([], [])
             self.curve_s.setData([], [])
             self.lbl_summary.setText("No movement distance detected in selected positions.")
+            self.last_cycle_time_s = 0.0
             return
 
         t_plot = np.concatenate(time_segments)
@@ -297,6 +300,7 @@ class RampPreviewWidget(QWidget):
         if total_dwell > 0:
             summary += f" | Dwell ≈ {total_dwell:.3f}s"
         self.lbl_summary.setText(summary)
+        self.last_cycle_time_s = total_time
 
     def _apply_to_drive(self):
         if self.motor_controller is None:
@@ -347,3 +351,6 @@ class RampPreviewWidget(QWidget):
     @staticmethod
     def degrees_to_counts(degrees: float) -> float:
         return COUNTS_PER_REV - (degrees * 10.0)
+
+    def get_cycle_time(self) -> float:
+        return max(0.0, float(self.last_cycle_time_s))

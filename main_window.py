@@ -122,9 +122,15 @@ class MainWindow(QMainWindow):
         self.motion_worker.finished.connect(self.motion_worker.deleteLater)
         self.motion_thread.finished.connect(self.motion_thread.deleteLater)
         self.motion_worker.status_updated.connect(self.plot_tab.set_status)
-        self.motion_worker.finished.connect(lambda: self._set_motion_ui_enabled(True))
+        self.motion_worker.finished.connect(self._handle_motion_finished)
+        self.motion_worker.cycle_completed.connect(self._handle_cycle_progress)
 
         self.motion_thread.start()
+        cycle_time = self.ramp_preview_tab.get_cycle_time()
+        if cycle_time > 0:
+            self.plot_tab.start_progress_tracking(cycle_time, plan.repetitions)
+        else:
+            self.plot_tab.stop_progress_tracking()
 
     def _set_motion_ui_enabled(self, enabled: bool) -> None:
         self.plot_tab.set_motion_ui_enabled(enabled)
@@ -132,6 +138,14 @@ class MainWindow(QMainWindow):
     def stop_motion(self):
         self.plot_tab.set_status("Stop requested...")
         self.motor_controller.stop_movement()
+        self.plot_tab.stop_progress_tracking()
+
+    def _handle_motion_finished(self):
+        self._set_motion_ui_enabled(True)
+        self.plot_tab.stop_progress_tracking()
+
+    def _handle_cycle_progress(self, completed_cycles: int):
+        self.plot_tab.set_progress_cycles(completed_cycles)
 
     def update_com_ports(self):
         try:

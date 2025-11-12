@@ -77,17 +77,21 @@ def solve_trapezoid(distance_rev, v_max_rps, a_up_rs2, a_down_rs2, dt=0.001):
 
 
 class RampPreviewWidget(QWidget):
-    """PyQt widget: preview rampy a zápis do PD1-C.
+    """PyQt widget: preview the ramp and write settings to PD1-C.
     GUI očekává:
-      - Distance: counts (0.1°), 3600 = 1 rev
+      - Motion path: provided from the Plot tab as counts (0.1°)
       - Max velocity: rpm
       - Accel/Decel: rpm/s
-      - Target position: counts (0.1°)
     Náhled přepočítá na rev/rps/rs², grafy zobrazí v rpm a countech.
     """
     def __init__(self, motor_controller=None, parent=None):
         super().__init__(parent)
         self.motor_controller = motor_controller
+        self.home_position_counts = 3600.0
+        self.home_position_deg = 0.0
+        self.motion_positions_counts = []
+        self.motion_positions_deg = []
+        self.motion_delays_ms = []
         self._build_ui()
         self._wire_signals()
         self._recompute()
@@ -97,13 +101,6 @@ class RampPreviewWidget(QWidget):
         layout = QVBoxLayout(self)
 
         form = QFormLayout()
-        # Distance in counts (0.1°)
-        self.spin_distance = QDoubleSpinBox()
-        self.spin_distance.setDecimals(3)
-        self.spin_distance.setRange(0.0001, 1e9)
-        self.spin_distance.setValue(3600.0)  # 1 rev
-        self.spin_distance.setSuffix(' cnts (0.1°)')
-
         # Velocity in rpm
         self.spin_vmax = QDoubleSpinBox()
         self.spin_vmax.setDecimals(3)
@@ -124,18 +121,9 @@ class RampPreviewWidget(QWidget):
         self.spin_dec.setValue(120.0)
         self.spin_dec.setSuffix(' rpm/s')
 
-        # Target position in counts (0.1°)
-        self.spin_target = QDoubleSpinBox()
-        self.spin_target.setDecimals(3)
-        self.spin_target.setRange(-1e12, 1e12)
-        self.spin_target.setValue(3600.0)
-        self.spin_target.setSuffix(' cnts (0.1°)')
-
-        form.addRow("Move distance:", self.spin_distance)
         form.addRow("Max velocity:", self.spin_vmax)
         form.addRow("Acceleration:", self.spin_acc)
         form.addRow("Deceleration:", self.spin_dec)
-        form.addRow("Target position:", self.spin_target)
         layout.addLayout(form)
 
         # Summary
@@ -149,7 +137,7 @@ class RampPreviewWidget(QWidget):
         self.plot_v.showGrid(x=True, y=True)
         self.curve_v = self.plot_v.plot([], [])
 
-        self.plot_s = pg.PlotWidget(title="Position vs Time [counts]")
+        self.plot_s = pg.PlotWidget(title="Position vs Time [deg]")
         self.plot_s.showGrid(x=True, y=True)
         self.curve_s = self.plot_s.plot([], [])
 
@@ -173,7 +161,7 @@ class RampPreviewWidget(QWidget):
             self.btn_move.setEnabled(False)
 
     def _wire_signals(self):
-        for w in (self.spin_distance, self.spin_vmax, self.spin_acc, self.spin_dec):
+        for w in (self.spin_vmax, self.spin_acc, self.spin_dec):
             w.valueChanged.connect(self._recompute)
         self.btn_recompute.clicked.connect(self._recompute)
         self.btn_apply_params.clicked.connect(self._apply_to_drive)
@@ -201,38 +189,114 @@ class RampPreviewWidget(QWidget):
         return rev * COUNTS_PER_REV
 
     # ----- Logic -----
+    def set_motion_positions(self, positions_counts, positions_degrees, delays_ms):
+        self.motion_positions_counts = list(positions_counts or [])
+        self.motion_positions_deg = list(positions_degrees or [])
+        self.motion_delays_ms = list(delays_ms or [])
+        self._recompute()
+
     def _recompute(self):
-        # GUI (drive units): counts, rpm, rpm/s
-        L_counts = self.spin_distance.value()
-        v_rpm    = self.spin_vmax.value()
+        v_rpm = self.spin_vmax.value()
         a_up_rpms = self.spin_acc.value()
         a_dn_rpms = self.spin_dec.value()
 
-        # To solver (rev, rps, rs²)
-        L_rev   = self.counts_to_rev(L_counts)
-        v_rps   = self.rpm_to_rps(v_rpm)
+        v_rps = self.rpm_to_rps(v_rpm)
         a_up_rs2 = self.rpms_to_rs2(a_up_rpms)
         a_dn_rs2 = self.rpms_to_rs2(a_dn_rpms)
 
-        t, v_rps_t, s_rev_t, info = solve_trapezoid(L_rev, v_rps, a_up_rs2, a_dn_rs2, dt=0.001)
+        path_counts = [self.home_position_counts] + self.motion_positions_counts
+        path_degrees = [self.home_position_deg] + self.motion_positions_deg
+        delays_ms = list(self.motion_delays_ms or [])
+        if len(delays_ms) < len(self.motion_positions_counts):
+            delays_ms.extend([0] * (len(self.motion_positions_counts) - len(delays_ms)))
+        if len(path_counts) < 2:
+            self.curve_v.setData([], [])
+            self.curve_s.setData([], [])
+            self.lbl_summary.setText("Add at least one position in the Data plots tab to preview the ramp.")
+            return
 
-        # For plots: rpm, counts
-        v_rpm_t = self.rps_to_rpm(v_rps_t)
-        s_counts_t = self.rev_to_counts(s_rev_t)
+        time_segments = []
+        velocity_segments = []
+        position_segments_deg = []
+        total_time = 0.0
+        total_distance_deg = 0.0
+        segment_count = 0
+        current_start_counts = path_counts[0]
+        current_start_deg = path_degrees[0]
 
-        self.curve_v.setData(t, v_rpm_t)
-        self.curve_s.setData(t, s_counts_t)
+        total_dwell = 0.0
 
-        if info['type'] == 'invalid':
-            self.lbl_summary.setText("Enter positive values.")
-        else:
-            v_peak_rpm = info['peak_v'] * 60.0
-            extra = f"  cruise: {info['t_cruise']:.3f}s" if info['type'] == 'trapezoid' else ""
-            self.lbl_summary.setText(
-                f"Profile: {info['type']} | T = {info['T']:.3f}s | "
-                f"t_acc = {info['t_acc']:.3f}s | t_dec = {info['t_dec']:.3f}s{extra} | "
-                f"v_peak ≈ {v_peak_rpm:.3f} rpm"
-            )
+        for idx, (target_counts, target_deg) in enumerate(zip(path_counts[1:], path_degrees[1:])):
+            segment_delay_ms = delays_ms[idx] if idx < len(delays_ms) else 0
+            dist_counts = abs(target_counts - current_start_counts)
+            if dist_counts <= 0:
+                current_start_counts = target_counts
+                current_start_deg = target_deg
+                if segment_delay_ms > 0:
+                    dwell = segment_delay_ms / 1000.0
+                    t_hold = np.array([total_time, total_time + dwell])
+                    v_hold = np.zeros_like(t_hold)
+                    s_hold = np.array([current_start_deg, current_start_deg])
+                    time_segments.append(t_hold)
+                    velocity_segments.append(v_hold)
+                    position_segments_deg.append(s_hold)
+                    total_time += dwell
+                    total_dwell += dwell
+                continue
+
+            L_rev = self.counts_to_rev(dist_counts)
+            t_seg, v_rps_seg, s_rev_seg, info = solve_trapezoid(L_rev, v_rps, a_up_rs2, a_dn_rs2, dt=0.001)
+            if info['type'] == 'invalid':
+                current_start_counts = target_counts
+                current_start_deg = target_deg
+                continue
+
+            direction = 1 if target_counts >= current_start_counts else -1
+            v_rpm_seg = self.rps_to_rpm(v_rps_seg)
+            s_counts_seg = current_start_counts + direction * self.rev_to_counts(s_rev_seg)
+            s_deg_seg = self.counts_to_degrees_array(s_counts_seg)
+
+            time_segments.append(t_seg + total_time)
+            velocity_segments.append(v_rpm_seg)
+            position_segments_deg.append(s_deg_seg)
+
+            total_time += info['T']
+            total_distance_deg += abs(target_deg - current_start_deg)
+            segment_count += 1
+            current_start_counts = target_counts
+            current_start_deg = target_deg
+
+            if segment_delay_ms > 0:
+                dwell = segment_delay_ms / 1000.0
+                t_hold = np.array([total_time, total_time + dwell])
+                v_hold = np.zeros_like(t_hold)
+                s_hold = np.array([current_start_deg, current_start_deg])
+                time_segments.append(t_hold)
+                velocity_segments.append(v_hold)
+                position_segments_deg.append(s_hold)
+                total_time += dwell
+                total_dwell += dwell
+
+        if not time_segments:
+            self.curve_v.setData([], [])
+            self.curve_s.setData([], [])
+            self.lbl_summary.setText("No movement distance detected in selected positions.")
+            return
+
+        t_plot = np.concatenate(time_segments)
+        v_plot = np.concatenate(velocity_segments)
+        s_plot = np.concatenate(position_segments_deg)
+
+        self.curve_v.setData(t_plot, v_plot)
+        self.curve_s.setData(t_plot, s_plot)
+
+        summary = (
+            f"Segments: {segment_count} | Total time ≈ {total_time:.3f}s | "
+            f"Distance ≈ {total_distance_deg:.1f}°"
+        )
+        if total_dwell > 0:
+            summary += f" | Dwell ≈ {total_dwell:.3f}s"
+        self.lbl_summary.setText(summary)
 
     def _apply_to_drive(self):
         if self.motor_controller is None:
@@ -262,8 +326,24 @@ class RampPreviewWidget(QWidget):
         if self.motor_controller is None:
             return
         try:
-            pos_counts = int(round(self.spin_target.value()))  # 0.1°/LSB
+            if not self.motion_positions_counts:
+                raise ValueError("No positions defined in the Plot tab.")
+            pos_counts = int(round(self.motion_positions_counts[0]))
             self.motor_controller.set_profile_position_mode()
             self.motor_controller.move_to_position(pos_counts)
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Move failed", str(e))
+
+    @staticmethod
+    def counts_to_degrees(counts: float) -> float:
+        degrees = (COUNTS_PER_REV - counts) / 10.0
+        return max(0.0, min(360.0, degrees))
+
+    @staticmethod
+    def counts_to_degrees_array(counts_array: np.ndarray) -> np.ndarray:
+        degrees = (COUNTS_PER_REV - counts_array) / 10.0
+        return np.clip(degrees, 0.0, 360.0)
+
+    @staticmethod
+    def degrees_to_counts(degrees: float) -> float:
+        return COUNTS_PER_REV - (degrees * 10.0)

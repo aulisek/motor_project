@@ -12,6 +12,7 @@ class MotionWorker(QObject):
         self.positions = positions
         self.delays = delays
         self.repetitions = repetitions
+        self.delay_sequence = list(delays or [])
 
     def run(self):
         try:

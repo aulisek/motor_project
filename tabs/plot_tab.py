@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
     QSlider,
     QSpinBox,
     QComboBox,
+    QToolButton,
 )
 from pyqtgraph import PlotWidget
 
@@ -31,6 +32,7 @@ class PlotTab(QWidget):
     stop_motion_requested = pyqtSignal()
     set_home_requested = pyqtSignal()
     daq_rate_changed = pyqtSignal(str)
+    positions_changed = pyqtSignal(list, list, list)
 
     def __init__(self, plot_manager, parent=None):
         super().__init__(parent)
@@ -44,20 +46,16 @@ class PlotTab(QWidget):
         sidebar = QWidget()
         sidebar_layout = QVBoxLayout(sidebar)
 
-        count_layout = QHBoxLayout()
-        count_layout.addWidget(QLabel("Number of Positions:"))
-        self.num_positions_spinbox = QSpinBox()
-        self.num_positions_spinbox.setRange(1, 10)
-        self.num_positions_spinbox.valueChanged.connect(self._create_position_inputs)
-        count_layout.addWidget(self.num_positions_spinbox)
-        sidebar_layout.addLayout(count_layout)
-
         self.positions_container = QWidget()
         self.positions_layout = QVBoxLayout(self.positions_container)
         sidebar_layout.addWidget(self.positions_container)
 
         self.status_label = QLabel("")
         sidebar_layout.addWidget(self.status_label)
+
+        self.add_position_button = QPushButton("Add Position")
+        self.add_position_button.clicked.connect(self._add_position_row)
+        sidebar_layout.addWidget(self.add_position_button)
 
         rate_layout = QVBoxLayout()
         rate_layout.addWidget(QLabel("DAQ Sampling Rate:"))
@@ -104,53 +102,75 @@ class PlotTab(QWidget):
 
         root_layout.addLayout(plots_layout, 1)
 
-        self._create_position_inputs()
+        self._add_position_row()
 
-    def _create_position_inputs(self) -> None:
-        while self.positions_layout.count():
-            item = self.positions_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+    def _add_position_row(self):
+        position_widget = QWidget()
+        position_layout = QHBoxLayout(position_widget)
 
-        for index in range(self.num_positions_spinbox.value()):
-            position_widget = QWidget()
-            position_layout = QHBoxLayout(position_widget)
+        label = QLabel("")
+        label.setObjectName("positionLabel")
+        angle_slider = QSlider(Qt.Orientation.Horizontal)
+        angle_slider.setRange(0, 360)
+        angle_slider.setValue(0)
 
-            label = QLabel(f"Position {index + 1}:")
-            angle_slider = QSlider(Qt.Orientation.Horizontal)
-            angle_slider.setRange(0, 360)
-            angle_slider.setValue(0)
+        angle_spinbox = QSpinBox()
+        angle_spinbox.setObjectName("angleSpinbox")
+        angle_spinbox.setRange(0, 360)
+        angle_spinbox.setValue(0)
 
-            angle_spinbox = QSpinBox()
-            angle_spinbox.setRange(0, 360)
-            angle_spinbox.setValue(0)
+        angle_slider.valueChanged.connect(angle_spinbox.setValue)
+        angle_spinbox.valueChanged.connect(angle_slider.setValue)
+        angle_spinbox.valueChanged.connect(self._emit_positions_changed)
 
-            angle_slider.valueChanged.connect(angle_spinbox.setValue)
-            angle_spinbox.valueChanged.connect(angle_slider.setValue)
+        delay_slider = QSlider(Qt.Orientation.Horizontal)
+        delay_slider.setRange(0, 5000)
+        delay_slider.setValue(500)
 
-            delay_slider = QSlider(Qt.Orientation.Horizontal)
-            delay_slider.setRange(0, 5000)
-            delay_slider.setValue(500)
+        delay_spinbox = QSpinBox()
+        delay_spinbox.setObjectName("delaySpinbox")
+        delay_spinbox.setRange(0, 5000)
+        delay_spinbox.setValue(500)
+        delay_spinbox.setSuffix(" ms")
 
-            delay_spinbox = QSpinBox()
-            delay_spinbox.setRange(0, 5000)
-            delay_spinbox.setValue(500)
-            delay_spinbox.setSuffix(" ms")
+        delay_slider.valueChanged.connect(delay_spinbox.setValue)
+        delay_spinbox.valueChanged.connect(delay_slider.setValue)
+        delay_spinbox.valueChanged.connect(self._emit_positions_changed)
 
-            delay_slider.valueChanged.connect(delay_spinbox.setValue)
-            delay_spinbox.valueChanged.connect(delay_slider.setValue)
+        delete_button = QToolButton()
+        delete_button.setText("🗑")
+        delete_button.clicked.connect(lambda: self._remove_position_row(position_widget))
+        delete_button.setToolTip("Remove this position")
 
-            position_layout.addWidget(label)
-            position_layout.addWidget(angle_slider)
-            position_layout.addWidget(angle_spinbox)
-            position_layout.addWidget(QLabel("Delay:"))
-            position_layout.addWidget(delay_slider)
-            position_layout.addWidget(delay_spinbox)
+        position_layout.addWidget(label)
+        position_layout.addWidget(angle_slider)
+        position_layout.addWidget(angle_spinbox)
+        position_layout.addWidget(QLabel("Delay:"))
+        position_layout.addWidget(delay_slider)
+        position_layout.addWidget(delay_spinbox)
+        position_layout.addWidget(delete_button)
 
-            self.positions_layout.addWidget(position_widget)
+        self.positions_layout.addWidget(position_widget)
+        self._refresh_position_labels()
+        self._emit_positions_changed()
 
-        self.positions_container.update()
+    def _remove_position_row(self, widget: QWidget):
+        widget.setParent(None)
+        widget.deleteLater()
+        if self.positions_layout.count() == 0:
+            self._add_position_row()
+        self._refresh_position_labels()
+        self._emit_positions_changed()
+
+    def _refresh_position_labels(self):
+        for index in range(self.positions_layout.count()):
+            item = self.positions_layout.itemAt(index)
+            widget = item.widget() if item else None
+            if not widget:
+                continue
+            label = widget.findChild(QLabel, "positionLabel")
+            if label:
+                label.setText(f"Position {index + 1}:")
 
     def build_motion_plan(self) -> MotionPlan:
         positions, delays = self._extract_positions_and_delays()
@@ -159,7 +179,7 @@ class PlotTab(QWidget):
         return MotionPlan(positions=positions, delays=delays)
 
     def _extract_positions_and_delays(self) -> Tuple[List[int], List[int]]:
-        positions: List[int] = []
+        positions_counts: List[int] = []
         delays: List[int] = []
 
         for index in range(self.positions_layout.count()):
@@ -168,23 +188,22 @@ class PlotTab(QWidget):
             if not widget:
                 continue
 
-            inputs = widget.findChildren(QSpinBox)
-            if len(inputs) < 2:
+            angle_spinbox = widget.findChild(QSpinBox, "angleSpinbox")
+            delay_spinbox = widget.findChild(QSpinBox, "delaySpinbox")
+            if angle_spinbox is None or delay_spinbox is None:
                 continue
 
-            angle_spinbox, delay_spinbox = inputs[0], inputs[1]
-            angle = angle_spinbox.value() * 10  # convert to 0.1° counts
-            delay = delay_spinbox.value()
-            positions.append(3600 - angle)
-            delays.append(delay)
+            angle_deg = float(angle_spinbox.value())
+            positions_counts.append(3600 - int(round(angle_deg * 10)))
+            delays.append(delay_spinbox.value())
 
-        return positions, delays
+        return positions_counts, delays
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text or "")
 
     def set_position_inputs_enabled(self, enabled: bool) -> None:
-        self.num_positions_spinbox.setEnabled(enabled)
+        self.add_position_button.setEnabled(enabled)
         for index in range(self.positions_layout.count()):
             item = self.positions_layout.itemAt(index)
             widget = item.widget() if item else None
@@ -212,3 +231,34 @@ class PlotTab(QWidget):
 
     def emit_current_daq_rate(self):
         self.daq_rate_changed.emit(self.current_daq_rate_key())
+
+    def emit_current_positions(self):
+        counts, degrees, delays = self._extract_path_data()
+        self.positions_changed.emit(counts, degrees, delays)
+
+    def _emit_positions_changed(self):
+        counts, degrees, delays = self._extract_path_data()
+        self.positions_changed.emit(counts, degrees, delays)
+
+    def _extract_positions_counts(self) -> List[int]:
+        positions, _, _ = self._extract_path_data()
+        return positions
+
+    def _extract_path_data(self) -> Tuple[List[int], List[float], List[int]]:
+        positions_counts: List[int] = []
+        positions_degrees: List[float] = []
+        delays_ms: List[int] = []
+        for index in range(self.positions_layout.count()):
+            item = self.positions_layout.itemAt(index)
+            widget = item.widget() if item else None
+            if not widget:
+                continue
+            angle_spinbox = widget.findChild(QSpinBox, "angleSpinbox")
+            delay_spinbox = widget.findChild(QSpinBox, "delaySpinbox")
+            if angle_spinbox is None:
+                continue
+            angle_deg = float(angle_spinbox.value())
+            positions_degrees.append(angle_deg)
+            positions_counts.append(3600 - int(round(angle_deg * 10)))
+            delays_ms.append(delay_spinbox.value() if delay_spinbox else 0)
+        return positions_counts, positions_degrees, delays_ms

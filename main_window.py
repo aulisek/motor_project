@@ -43,11 +43,13 @@ class MainWindow(QMainWindow):
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
         self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
+        self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
 
         self.expert_tab.refresh_ports_requested.connect(self.update_com_ports)
         self.expert_tab.connect_port_requested.connect(self.select_com_port)
         self.expert_tab.sampling_rate_changed.connect(self.plot_manager.set_save_rate)
         self.plot_tab.emit_current_daq_rate()
+        self.plot_tab.emit_current_positions()
 
     def _get_ramp_preview_motion_params(self):
         widget = getattr(self, "ramp_preview_tab", None)

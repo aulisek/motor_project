@@ -15,6 +15,9 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QToolButton,
     QProgressBar,
+    QGroupBox,
+    QScrollArea,
+    QFrame,
 )
 from pyqtgraph import PlotWidget
 
@@ -47,27 +50,17 @@ class PlotTab(QWidget):
 
     def _build_ui(self) -> None:
         root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(12, 12, 12, 12)
+        root_layout.setSpacing(12)
 
-        # Sidebar with dynamic positions
-        sidebar = QWidget()
-        sidebar_layout = QVBoxLayout(sidebar)
+        controls_panel = QWidget()
+        controls_layout = QVBoxLayout(controls_panel)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(12)
+        root_layout.addWidget(controls_panel, 0)
 
-        self.positions_container = QWidget()
-        self.positions_layout = QVBoxLayout(self.positions_container)
-        sidebar_layout.addWidget(self.positions_container)
-
-        self.status_label = QLabel("")
-        sidebar_layout.addWidget(self.status_label)
-
-        sampling_layout = QVBoxLayout()
-        sampling_layout.addWidget(QLabel("Sampling Rate for Data Saving (Hz):"))
-        self.sampling_rate_spinbox = QSpinBox()
-        self.sampling_rate_spinbox.setRange(1, 50)
-        self.sampling_rate_spinbox.setValue(2)
-        self.sampling_rate_spinbox.valueChanged.connect(lambda value: self.sampling_rate_changed.emit(int(value)))
-        sampling_layout.addWidget(self.sampling_rate_spinbox)
-        sidebar_layout.addLayout(sampling_layout)
-
+        status_group = self._create_group_box("Motor Status")
+        status_layout = status_group.layout()
         motor_status_layout = QHBoxLayout()
         self.motor_status_indicator = QLabel()
         self.motor_status_indicator.setFixedSize(16, 16)
@@ -76,8 +69,43 @@ class PlotTab(QWidget):
         self.motor_status_text = QLabel("Motor not initialized")
         motor_status_layout.addWidget(self.motor_status_text)
         motor_status_layout.addStretch()
-        sidebar_layout.addLayout(motor_status_layout)
+        status_layout.addLayout(motor_status_layout)
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        status_layout.addWidget(self.status_label)
+        controls_layout.addWidget(status_group)
 
+        self.init_controls_container = self._create_group_box("Connection")
+        init_layout = self.init_controls_container.layout()
+        init_layout.addWidget(QLabel("Available devices:"))
+        self.init_com_combo = QComboBox()
+        init_layout.addWidget(self.init_com_combo)
+        buttons_row = QHBoxLayout()
+        self.init_refresh_button = QPushButton("Refresh")
+        self.init_refresh_button.clicked.connect(self.refresh_ports_requested.emit)
+        buttons_row.addWidget(self.init_refresh_button)
+        self.init_connect_button = QPushButton("Connect")
+        self.init_connect_button.clicked.connect(lambda: self.connect_port_requested.emit(self.init_com_combo.currentIndex()))
+        buttons_row.addWidget(self.init_connect_button)
+        init_layout.addLayout(buttons_row)
+        controls_layout.addWidget(self.init_controls_container)
+
+        plan_group = self._create_group_box("Motion Plan")
+        plan_layout = plan_group.layout()
+        self.positions_container = QWidget()
+        self.positions_layout = QVBoxLayout(self.positions_container)
+        self.positions_layout.setContentsMargins(0, 0, 0, 0)
+        self.positions_layout.setSpacing(8)
+        positions_scroll = QScrollArea()
+        positions_scroll.setWidget(self.positions_container)
+        positions_scroll.setWidgetResizable(True)
+        positions_scroll.setFrameShape(QFrame.NoFrame)
+        plan_layout.addWidget(positions_scroll)
+        self.add_position_button = QPushButton("Add Motion Step")
+        self.add_position_button.clicked.connect(self._add_position_row)
+        plan_actions = QHBoxLayout()
+        plan_actions.addWidget(self.add_position_button)
+        plan_actions.addStretch()
         repetitions_layout = QHBoxLayout()
         repetitions_layout.addWidget(QLabel("Repetitions:"))
         self.repetitions_spinbox = QSpinBox()
@@ -85,30 +113,64 @@ class PlotTab(QWidget):
         self.repetitions_spinbox.setValue(1)
         self.repetitions_spinbox.setSuffix(" cycles")
         repetitions_layout.addWidget(self.repetitions_spinbox)
-        sidebar_layout.addLayout(repetitions_layout)
+        plan_actions.addLayout(repetitions_layout)
+        plan_layout.addLayout(plan_actions)
+        controls_layout.addWidget(plan_group, 1)
 
-        self.init_controls_container = QWidget()
-        init_layout = QVBoxLayout(self.init_controls_container)
-        init_layout.addWidget(QLabel("Initialize Motor:"))
-        self.init_com_combo = QComboBox()
-        init_layout.addWidget(self.init_com_combo)
-        self.init_refresh_button = QPushButton("Refresh Ports")
-        self.init_refresh_button.clicked.connect(self.refresh_ports_requested.emit)
-        init_layout.addWidget(self.init_refresh_button)
-        self.init_connect_button = QPushButton("Connect selected Device")
-        self.init_connect_button.clicked.connect(lambda: self.connect_port_requested.emit(self.init_com_combo.currentIndex()))
-        init_layout.addWidget(self.init_connect_button)
-        sidebar_layout.addWidget(self.init_controls_container)
+        logging_group = self._create_group_box("Data Logging")
+        logging_layout = logging_group.layout()
+        logging_layout.addWidget(QLabel("Sampling rate for saving (Hz):"))
+        self.sampling_rate_spinbox = QSpinBox()
+        self.sampling_rate_spinbox.setRange(1, 50)
+        self.sampling_rate_spinbox.setValue(2)
+        self.sampling_rate_spinbox.valueChanged.connect(lambda value: self.sampling_rate_changed.emit(int(value)))
+        logging_layout.addWidget(self.sampling_rate_spinbox)
+        controls_layout.addWidget(logging_group)
 
+        acquisition_group = self._create_group_box("Acquisition")
+        acquisition_layout = acquisition_group.layout()
+        acquisition_layout.addWidget(QLabel("DAQ sampling rate:"))
+        self.daq_rate_combo = QComboBox()
+        for key, label in ADS1263_SAMPLE_RATE_LABELS:
+            self.daq_rate_combo.addItem(label, key)
+        default_index = self.daq_rate_combo.findData(DEFAULT_ADS1263_RATE_KEY)
+        if default_index >= 0:
+            self.daq_rate_combo.setCurrentIndex(default_index)
+        self.daq_rate_combo.currentIndexChanged.connect(self._handle_daq_rate_change)
+        acquisition_layout.addWidget(self.daq_rate_combo)
+        daq_buttons = QHBoxLayout()
+        self.start_daq_button = QPushButton("Start DAQ")
+        self.stop_daq_button = QPushButton("Stop DAQ")
+        self.start_daq_button.clicked.connect(self.plot_manager.start_acquisition)
+        self.stop_daq_button.clicked.connect(self.plot_manager.stop_acquisition)
+        daq_buttons.addWidget(self.start_daq_button)
+        daq_buttons.addWidget(self.stop_daq_button)
+        acquisition_layout.addLayout(daq_buttons)
+        controls_layout.addWidget(acquisition_group)
+
+        motion_group = self._create_group_box("Motion Control")
+        motion_layout = motion_group.layout()
+        motion_buttons = QHBoxLayout()
+        self.set_home_button = QPushButton("Set Home")
+        self.start_motor_button = QPushButton("Start Motion")
+        self.stop_motion_button = QPushButton("Stop Motion")
+        self.set_home_button.clicked.connect(self.set_home_requested.emit)
+        self.start_motor_button.clicked.connect(self.start_motion_requested.emit)
+        self.stop_motion_button.clicked.connect(self.stop_motion_requested.emit)
+        motion_buttons.addWidget(self.set_home_button)
+        motion_buttons.addWidget(self.start_motor_button)
+        motion_buttons.addWidget(self.stop_motion_button)
+        motion_layout.addLayout(motion_buttons)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setFormat("%v / %m cycles")
         self.progress_bar.hide()
-        sidebar_layout.addWidget(self.progress_bar)
-
+        motion_layout.addWidget(self.progress_bar)
         self.eta_label = QLabel("")
         self.eta_label.hide()
-        sidebar_layout.addWidget(self.eta_label)
+        motion_layout.addWidget(self.eta_label)
+        controls_layout.addWidget(motion_group)
+        controls_layout.addStretch()
 
         self.progress_timer = QTimer(self)
         self.progress_timer.setInterval(200)
@@ -118,71 +180,49 @@ class PlotTab(QWidget):
         self._progress_total_cycles = 0
         self._progress_start_ts = 0.0
 
-        self.add_position_button = QPushButton("Add Position")
-        self.add_position_button.clicked.connect(self._add_position_row)
-        sidebar_layout.addWidget(self.add_position_button)
+        plots_panel = QWidget()
+        plots_layout = QVBoxLayout(plots_panel)
+        plots_layout.setContentsMargins(0, 0, 0, 0)
+        plots_layout.setSpacing(8)
+        root_layout.addWidget(plots_panel, 1)
 
-        rate_layout = QVBoxLayout()
-        rate_layout.addWidget(QLabel("DAQ Sampling Rate:"))
-        self.daq_rate_combo = QComboBox()
-        for key, label in ADS1263_SAMPLE_RATE_LABELS:
-            self.daq_rate_combo.addItem(label, key)
-        default_index = self.daq_rate_combo.findData(DEFAULT_ADS1263_RATE_KEY)
-        if default_index >= 0:
-            self.daq_rate_combo.setCurrentIndex(default_index)
-        self.daq_rate_combo.currentIndexChanged.connect(self._handle_daq_rate_change)
-        rate_layout.addWidget(self.daq_rate_combo)
-        sidebar_layout.addLayout(rate_layout)
-
-        root_layout.addWidget(sidebar, 0)
-
-        # Plot column with buttons
-        plots_layout = QVBoxLayout()
         self.data_widget = PlotWidget()
         self.position_widget = PlotWidget()
         self._configure_plots()
-
         plots_layout.addWidget(self.data_widget)
         plots_layout.addWidget(self.position_widget)
 
-        self.set_home_button = QPushButton("Set HOME")
-        self.start_motor_button = QPushButton("Start Motion")
-        self.stop_motion_button = QPushButton("Stop Motion")
-        self.start_daq_button = QPushButton("Start DAQ")
-        self.stop_daq_button = QPushButton("STOP DAQ")
-
-        self.set_home_button.clicked.connect(self.set_home_requested.emit)
-        self.start_motor_button.clicked.connect(self.start_motion_requested.emit)
-        self.stop_motion_button.clicked.connect(self.stop_motion_requested.emit)
-        self.start_daq_button.clicked.connect(self.plot_manager.start_acquisition)
-        self.stop_daq_button.clicked.connect(self.plot_manager.stop_acquisition)
-
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.set_home_button)
-        button_layout.addWidget(self.start_motor_button)
-        button_layout.addWidget(self.stop_motion_button)
-        button_layout.addWidget(self.start_daq_button)
-        button_layout.addWidget(self.stop_daq_button)
-        plots_layout.addLayout(button_layout)
-
-        root_layout.addLayout(plots_layout, 1)
-
         self._add_position_row()
+
+    @staticmethod
+    def _create_group_box(title: str) -> QGroupBox:
+        group = QGroupBox(title)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(6)
+        group.setLayout(layout)
+        return group
 
     def _add_position_row(self):
         position_widget = QWidget()
         position_layout = QHBoxLayout(position_widget)
+        position_layout.setContentsMargins(0, 0, 0, 0)
+        position_layout.setSpacing(6)
 
         label = QLabel("")
         label.setObjectName("positionLabel")
         angle_slider = QSlider(Qt.Orientation.Horizontal)
         angle_slider.setRange(0, 360)
         angle_slider.setValue(0)
+        angle_slider.setTickInterval(30)
+        angle_slider.setTickPosition(QSlider.TicksBelow)
+        angle_slider.setPageStep(5)
 
         angle_spinbox = QSpinBox()
         angle_spinbox.setObjectName("angleSpinbox")
         angle_spinbox.setRange(0, 360)
         angle_spinbox.setValue(0)
+        angle_spinbox.setSuffix("°")
 
         angle_slider.valueChanged.connect(angle_spinbox.setValue)
         angle_spinbox.valueChanged.connect(angle_slider.setValue)
@@ -191,6 +231,9 @@ class PlotTab(QWidget):
         delay_slider = QSlider(Qt.Orientation.Horizontal)
         delay_slider.setRange(0, 5000)
         delay_slider.setValue(500)
+        delay_slider.setTickInterval(250)
+        delay_slider.setTickPosition(QSlider.TicksBelow)
+        delay_slider.setPageStep(50)
 
         delay_spinbox = QSpinBox()
         delay_spinbox.setObjectName("delaySpinbox")
@@ -203,7 +246,8 @@ class PlotTab(QWidget):
         delay_spinbox.valueChanged.connect(self._emit_positions_changed)
 
         delete_button = QToolButton()
-        delete_button.setText("🗑")
+        delete_button.setText("Remove")
+        delete_button.setAutoRaise(True)
         delete_button.clicked.connect(lambda: self._remove_position_row(position_widget))
         delete_button.setToolTip("Remove this position")
 

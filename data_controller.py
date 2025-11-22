@@ -45,7 +45,7 @@ ADS1263_SAMPLE_RATES = {
     "ADS1263_2d5SPS": {"code": 0x0, "sps": 2.5},
 }
 
-DEFAULT_ADS1263_RATE_KEY = "ADS1263_400SPS"
+DEFAULT_ADS1263_RATE_KEY = "ADS1263_10SPS"
 
 ADS1263_SAMPLE_RATE_LABELS = [
     (key, _format_rate_label(values["sps"])) for key, values in ADS1263_SAMPLE_RATES.items()
@@ -89,6 +89,7 @@ class DAQController(QThread):
 
         self.log_file = None
         self.csv_writer = None
+        self.experiment_metadata = {}
 
     def _apply_timing_config(self):
         """Recalculate timing intervals based on the configured sample rate."""
@@ -98,7 +99,7 @@ class DAQController(QThread):
         gui_divider = max(1, int(self.sample_rate_hz // self.gui_rate_hz))
         self.gui_interval = gui_divider
 
-    def init_log_file(self):
+    def init_log_file(self, metadata=None):
         # === Create folder if it doesn't exist ===
         os.makedirs("measurements", exist_ok=True)
 
@@ -109,6 +110,7 @@ class DAQController(QThread):
         # === Open file for writing ===
         self.log_file = open(filename, mode='w', newline='')
         self.csv_writer = csv.writer(self.log_file)
+        self._write_metadata_header(metadata or {})
         self.csv_writer.writerow(["timestamp", "position", "resistance", "humidity", "temperature"])
 
         print(f"[DAQ] Logging started → {filename}")
@@ -125,7 +127,7 @@ class DAQController(QThread):
 
     def run(self):
         self.running = True
-        self.init_log_file()
+        self.init_log_file(self.experiment_metadata)
         self.start_time = time.perf_counter()
         self.position_thread = threading.Thread(target=self.update_position_loop, daemon=True)
         self.position_thread.start()
@@ -194,8 +196,6 @@ class DAQController(QThread):
             self.log_file = None
             self.csv_writer = None
 
-        GPIO.cleanup()
-
     def change_sample_rate(self, rate_hz):
         """Update the acquisition rate (Hz)."""
         with self._config_lock:
@@ -219,3 +219,70 @@ class DAQController(QThread):
         target = ADS1263_SAMPLE_RATES[rate_key]["sps"]
         self.change_sample_rate(max(1, int(round(target))))
         self._configure_adc_rate(rate_key)
+
+    def set_experiment_metadata(self, metadata: dict):
+        """Store metadata so the next logging session includes it in the header."""
+        self.experiment_metadata = metadata or {}
+
+    def cleanup(self):
+        """Stop acquisition and release GPIO resources."""
+        self.stop()
+        GPIO.cleanup()
+
+    def _write_metadata_header(self, metadata: dict):
+        if not self.log_file:
+            return
+        lines = []
+        name = metadata.get("experiment_name")
+        if name:
+            lines.append(f"Experiment: {name}")
+        description = metadata.get("experiment_description")
+        if description:
+            lines.append("Description:")
+            for desc_line in description.splitlines():
+                lines.append(f"  {desc_line}")
+        daq_label = metadata.get("daq_rate_label")
+        if daq_label:
+            lines.append(f"DAQ rate: {daq_label} (key: {metadata.get('daq_rate_key', '')})")
+        repetitions = metadata.get("repetitions")
+        if repetitions:
+            lines.append(f"Repetitions: {repetitions}")
+        accel = metadata.get("acceleration")
+        if accel:
+            lines.append(
+                "Acceleration: "
+                f"max={accel.get('max_acc')} | profile={accel.get('profile_acc')}"
+            )
+        decel = metadata.get("deceleration")
+        if decel:
+            lines.append(
+                "Deceleration: "
+                f"max={decel.get('max_dec')} | profile={decel.get('profile_dec')}"
+            )
+        velocity = metadata.get("velocity")
+        if velocity is not None:
+            lines.append(f"Profile velocity: {velocity}")
+
+        positions = metadata.get("positions")
+        if positions:
+            lines.append("Motion steps (angle°, counts, delay ms):")
+            for idx, step in enumerate(positions, start=1):
+                angle = step.get("degrees")
+                if isinstance(angle, (int, float)):
+                    angle_display = f"{angle:.2f}"
+                else:
+                    angle_display = str(angle)
+                counts = step.get("counts")
+                delay = step.get("delay_ms")
+                lines.append(
+                    f"  Step {idx}: {angle_display}°, counts={counts}, delay={delay} ms"
+                )
+
+        if not lines:
+            return
+
+        timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_file.write(f"# Metadata recorded at {timestamp_str}\n")
+        for line in lines:
+            self.log_file.write(f"# {line}\n")
+        self.log_file.write("#\n")

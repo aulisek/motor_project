@@ -1,5 +1,6 @@
 from collections import deque
 
+from PyQt5.QtCore import QTimer
 import pyqtgraph as pg
 from data_controller import DAQController
 
@@ -15,7 +16,10 @@ class PlotManager:
         self.position_buffer = deque(maxlen=500)
         self.resistance_buffer = deque(maxlen=500)
 
-        self.data_save_rate = 500  # ms
+        self._plot_timer = QTimer()
+        self._plot_timer.setInterval(50)
+        self._plot_timer.timeout.connect(self._flush_plot_data)
+        self._plot_dirty = False
 
     def setup_plots(self, data_widget, position_widget):
         self.data_plot = data_widget
@@ -23,24 +27,14 @@ class PlotManager:
         self.data_plot.setLabel("left", "Resistance (Ω)")
         self.data_plot.setLabel("bottom", "Sample count")
         self.data_plot.showGrid(x=True, y=True)
-        self.data_curve = self.data_plot.plot(
-            pen=pg.mkPen(color="r", width=1),
-            symbol="+",
-            symbolSize=8,
-            symbolBrush="w",
-        )
+        self.data_curve = self.data_plot.plot(pen=pg.mkPen(color="r", width=1))
 
         self.position_plot = position_widget
         self.position_plot.setTitle("Motor Position")
         self.position_plot.setLabel("left", "Angle (°)")
         self.position_plot.setLabel("bottom", "Sample count")
         self.position_plot.showGrid(x=True, y=True)
-        self.position_curve = self.position_plot.plot(
-            pen=pg.mkPen(color="b", width=1),
-            symbol="+",
-            symbolSize=8,
-            symbolBrush="w",
-        )
+        self.position_curve = self.position_plot.plot(pen=pg.mkPen(color="b", width=1))
 
     def update_plot(self):
         self.data_curve.setData(self.resistance_buffer)
@@ -49,19 +43,41 @@ class PlotManager:
     def handle_new_data(self, timestamp, position, resistance, humidity, temperature):
         self.resistance_buffer.append(resistance)
         self.position_buffer.append(position)
+        self._plot_dirty = True
+        if not self._plot_timer.isActive():
+            self._plot_timer.start()
+
+    def _flush_plot_data(self):
+        if not self._plot_dirty:
+            self._plot_timer.stop()
+            return
+        self._plot_dirty = False
         self.update_plot()
+
+    def reset_plot_data(self):
+        """Clear buffers so each motion run starts with fresh plots."""
+        self.resistance_buffer.clear()
+        self.position_buffer.clear()
+        self._plot_dirty = False
+        self._plot_timer.stop()
+        if hasattr(self, "data_curve"):
+            self.data_curve.setData([])
+        if hasattr(self, "position_curve"):
+            self.position_curve.setData([])
 
     def start_acquisition(self):
         if not self.daq_controller.isRunning():
             self.daq_controller.start()
 
-    def set_save_rate(self, rate: int):
-        safe_rate = max(1, int(rate))
-        self.data_save_rate = safe_rate
-        self.daq_controller.change_sample_rate(safe_rate)
+    def set_experiment_metadata(self, metadata: dict):
+        self.daq_controller.set_experiment_metadata(metadata or {})
 
     def stop_acquisition(self):
         self.daq_controller.stop()
 
     def set_daq_sample_rate(self, rate_key: str):
         self.daq_controller.set_ads1263_sample_rate(rate_key)
+
+    def shutdown(self):
+        """Completely stop and release DAQ resources."""
+        self.daq_controller.cleanup()

@@ -18,6 +18,8 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QScrollArea,
     QFrame,
+    QLineEdit,
+    QPlainTextEdit,
 )
 from pyqtgraph import PlotWidget
 
@@ -41,12 +43,14 @@ class PlotTab(QWidget):
     positions_changed = pyqtSignal(list, list, list)
     refresh_ports_requested = pyqtSignal()
     connect_port_requested = pyqtSignal(int)
-    sampling_rate_changed = pyqtSignal(int)
 
     def __init__(self, plot_manager, parent=None):
         super().__init__(parent)
         self.plot_manager = plot_manager
+        self._motor_initialized = False
+        self._motion_controls_enabled = True
         self._build_ui()
+        self._update_motion_control_buttons()
 
     def _build_ui(self) -> None:
         root_layout = QHBoxLayout(self)
@@ -90,6 +94,19 @@ class PlotTab(QWidget):
         init_layout.addLayout(buttons_row)
         controls_layout.addWidget(self.init_controls_container)
 
+        experiment_group = self._create_group_box("Experiment Info")
+        experiment_layout = experiment_group.layout()
+        experiment_layout.addWidget(QLabel("Experiment name:"))
+        self.experiment_name_edit = QLineEdit()
+        self.experiment_name_edit.setPlaceholderText("e.g., Sample sweep #5")
+        experiment_layout.addWidget(self.experiment_name_edit)
+        experiment_layout.addWidget(QLabel("Description / notes:"))
+        self.experiment_description_edit = QPlainTextEdit()
+        self.experiment_description_edit.setPlaceholderText("Add details about this run...")
+        self.experiment_description_edit.setFixedHeight(80)
+        experiment_layout.addWidget(self.experiment_description_edit)
+        controls_layout.addWidget(experiment_group)
+
         plan_group = self._create_group_box("Motion Plan")
         plan_layout = plan_group.layout()
         self.positions_container = QWidget()
@@ -116,16 +133,6 @@ class PlotTab(QWidget):
         plan_actions.addLayout(repetitions_layout)
         plan_layout.addLayout(plan_actions)
         controls_layout.addWidget(plan_group, 1)
-
-        logging_group = self._create_group_box("Data Logging")
-        logging_layout = logging_group.layout()
-        logging_layout.addWidget(QLabel("Sampling rate for saving (Hz):"))
-        self.sampling_rate_spinbox = QSpinBox()
-        self.sampling_rate_spinbox.setRange(1, 50)
-        self.sampling_rate_spinbox.setValue(2)
-        self.sampling_rate_spinbox.valueChanged.connect(lambda value: self.sampling_rate_changed.emit(int(value)))
-        logging_layout.addWidget(self.sampling_rate_spinbox)
-        controls_layout.addWidget(logging_group)
 
         acquisition_group = self._create_group_box("Acquisition")
         acquisition_layout = acquisition_group.layout()
@@ -325,8 +332,8 @@ class PlotTab(QWidget):
                 widget.setEnabled(enabled)
 
     def set_motion_controls_enabled(self, enabled: bool) -> None:
-        self.set_home_button.setEnabled(enabled)
-        self.start_motor_button.setEnabled(enabled)
+        self._motion_controls_enabled = bool(enabled)
+        self._update_motion_control_buttons()
         self.stop_motion_button.setEnabled(True)
 
     def set_motion_ui_enabled(self, enabled: bool) -> None:
@@ -343,15 +350,15 @@ class PlotTab(QWidget):
     def current_daq_rate_key(self) -> str:
         return self.daq_rate_combo.currentData() or DEFAULT_ADS1263_RATE_KEY
 
+    def current_daq_rate_label(self) -> str:
+        return self.daq_rate_combo.currentText()
+
     def emit_current_daq_rate(self):
         self.daq_rate_changed.emit(self.current_daq_rate_key())
 
     def emit_current_positions(self):
         counts, degrees, delays = self._extract_path_data()
         self.positions_changed.emit(counts, degrees, delays)
-
-    def emit_current_sampling_rate(self):
-        self.sampling_rate_changed.emit(int(self.sampling_rate_spinbox.value()))
 
     def _emit_positions_changed(self):
         counts, degrees, delays = self._extract_path_data()
@@ -435,6 +442,7 @@ class PlotTab(QWidget):
         return f"{hours}h {minutes:02d}m"
 
     def set_motor_initialized(self, initialized: bool):
+        self._motor_initialized = bool(initialized)
         if initialized:
             self.motor_status_indicator.setStyleSheet("background-color: #27ae60; border: 1px solid #1e8449;")
             self.motor_status_text.setText("Motor initialized")
@@ -443,6 +451,7 @@ class PlotTab(QWidget):
             self.motor_status_indicator.setStyleSheet("background-color: #c0392b; border: 1px solid #96281b;")
             self.motor_status_text.setText("Motor not initialized")
             self.init_controls_container.show()
+        self._update_motion_control_buttons()
 
     def set_com_ports(self, ports):
         self.init_com_combo.clear()
@@ -450,3 +459,14 @@ class PlotTab(QWidget):
             self.init_com_combo.addItems(ports)
         else:
             self.init_com_combo.addItem("No hardware found")
+
+    def experiment_name(self) -> str:
+        return self.experiment_name_edit.text().strip()
+
+    def experiment_description(self) -> str:
+        return self.experiment_description_edit.toPlainText().strip()
+
+    def _update_motion_control_buttons(self):
+        can_control = self._motor_initialized and self._motion_controls_enabled
+        self.set_home_button.setEnabled(can_control)
+        self.start_motor_button.setEnabled(can_control)

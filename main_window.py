@@ -41,13 +41,11 @@ class MainWindow(QMainWindow):
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
         self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
-        self.plot_tab.sampling_rate_changed.connect(self.plot_manager.set_save_rate)
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
         self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)
         self.plot_tab.connect_port_requested.connect(self.select_com_port)
         self.plot_tab.emit_current_daq_rate()
         self.plot_tab.emit_current_positions()
-        self.plot_tab.emit_current_sampling_rate()
 
     def _get_ramp_preview_motion_params(self):
         widget = getattr(self, "ramp_preview_tab", None)
@@ -68,6 +66,35 @@ class MainWindow(QMainWindow):
             return None
 
         return {"acc": acc, "dec": dec, "vel": vel}
+
+    def _collect_experiment_metadata(
+        self,
+        plan,
+        max_acceleration,
+        prof_acceleration,
+        max_deceleration,
+        prof_deceleration,
+        prof_velocity,
+    ):
+        positions_summary = []
+        for idx, count in enumerate(plan.positions):
+            delay = plan.delays[idx] if idx < len(plan.delays) else 0
+            degrees = round((3600 - count) / 10.0, 2)
+            positions_summary.append(
+                {"index": idx + 1, "counts": count, "degrees": degrees, "delay_ms": delay}
+            )
+
+        return {
+            "experiment_name": self.plot_tab.experiment_name(),
+            "experiment_description": self.plot_tab.experiment_description(),
+            "daq_rate_key": self.plot_tab.current_daq_rate_key(),
+            "daq_rate_label": self.plot_tab.current_daq_rate_label(),
+            "repetitions": plan.repetitions,
+            "positions": positions_summary,
+            "acceleration": {"max_acc": max_acceleration, "profile_acc": prof_acceleration},
+            "deceleration": {"max_dec": max_deceleration, "profile_dec": prof_deceleration},
+            "velocity": prof_velocity,
+        }
 
     def start_motion(self):
         try:
@@ -93,8 +120,23 @@ class MainWindow(QMainWindow):
         end_velocity = 0
         home_position = 3600
 
+        experiment_metadata = self._collect_experiment_metadata(
+            plan,
+            max_acceleration,
+            prof_acceleration,
+            max_deceleration,
+            prof_deceleration,
+            prof_velocity,
+        )
+
         self._set_motion_ui_enabled(False)
         self.plot_tab.set_status("Preparing motion...")
+        # Always stop any existing DAQ session so each motion gets a fresh log
+        self.plot_manager.stop_acquisition()
+        self.plot_manager.set_experiment_metadata(experiment_metadata)
+        self.plot_manager.reset_plot_data()
+        # Ensure DAQ logging is running whenever we kick off a motion sequence
+        self.plot_manager.start_acquisition()
 
         self.motor_controller.set_motion_parameters(
             max_acceleration,
@@ -137,10 +179,14 @@ class MainWindow(QMainWindow):
         self.plot_tab.set_status("Stop requested...")
         self.motor_controller.stop_movement()
         self.plot_tab.stop_progress_tracking()
+        # If user manually stops motion, shut down DAQ immediately
+        self.plot_manager.stop_acquisition()
 
     def _handle_motion_finished(self):
         self._set_motion_ui_enabled(True)
         self.plot_tab.stop_progress_tracking()
+        # Stop DAQ logging after motion completes
+        self.plot_manager.stop_acquisition()
 
     def _handle_cycle_progress(self, completed_cycles: int):
         self.plot_tab.set_progress_cycles(completed_cycles)
@@ -167,5 +213,5 @@ class MainWindow(QMainWindow):
             self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
 
     def closeEvent(self, event):
-        self.plot_manager.stop_acquisition()
+        self.plot_manager.shutdown()
         super().closeEvent(event)

@@ -67,6 +67,7 @@ class DAQController(QThread):
         self._config_lock = threading.Lock()
         self._apply_timing_config()
         self._ads_rate_key = DEFAULT_ADS1263_RATE_KEY
+        self.reference_resistance = 110000.0  # default reference resistor (Ohms)
 
         # === Init ADS1256 ===
         self.adc = ADS1256()
@@ -147,9 +148,10 @@ class DAQController(QThread):
             adc_raw = self.adc.ADS1256_GetChannalValue(self.adc_channel)
             voltage = adc_raw * 5.0 / 0x7FFFFF  # convert to volts
             try:
-                resistance = (voltage * 110000) / (5.0 - voltage)  # resistance in ohms (assuming voltage divider)
-                # resistance = voltage
-            except ZeroDivisionError:
+                reference = max(0.0001, float(self.reference_resistance))
+                denominator = max(1e-6, 5.0 - voltage)
+                resistance = (voltage * reference) / denominator  # resistance in ohms (assuming voltage divider)
+            except (ZeroDivisionError, ValueError):
                 resistance = 0.0
 
             # === Read motor ===
@@ -224,6 +226,16 @@ class DAQController(QThread):
         """Store metadata so the next logging session includes it in the header."""
         self.experiment_metadata = metadata or {}
 
+    def set_reference_resistance(self, value: float):
+        """Allow UI/config to adjust the voltage divider reference resistor."""
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            return
+        if numeric_value <= 0:
+            return
+        self.reference_resistance = numeric_value
+
     def cleanup(self):
         """Stop acquisition and release GPIO resources."""
         self.stop()
@@ -262,6 +274,9 @@ class DAQController(QThread):
         velocity = metadata.get("velocity")
         if velocity is not None:
             lines.append(f"Profile velocity: {velocity}")
+        ref_res = metadata.get("reference_resistance")
+        if ref_res:
+            lines.append(f"Reference resistor: {ref_res} Ω")
 
         positions = metadata.get("positions")
         if positions:

@@ -72,6 +72,10 @@ class PlotManager:
     def set_experiment_metadata(self, metadata: dict):
         self.daq_controller.set_experiment_metadata(metadata or {})
 
+    def set_reference_resistance(self, value: float):
+        """Forward the user-selected reference resistor to the DAQ thread."""
+        self.daq_controller.set_reference_resistance(value)
+
     def stop_acquisition(self):
         self.daq_controller.stop()
 

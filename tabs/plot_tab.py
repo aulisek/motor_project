@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QSlider,
     QSpinBox,
+    QDoubleSpinBox,
     QComboBox,
     QToolButton,
     QProgressBar,
@@ -145,6 +146,16 @@ class PlotTab(QWidget):
             self.daq_rate_combo.setCurrentIndex(default_index)
         self.daq_rate_combo.currentIndexChanged.connect(self._handle_daq_rate_change)
         acquisition_layout.addWidget(self.daq_rate_combo)
+        resistance_layout = QHBoxLayout()
+        resistance_layout.addWidget(QLabel("Reference resistor (Ω):"))
+        self.reference_res_spinbox = QDoubleSpinBox()
+        self.reference_res_spinbox.setDecimals(1)
+        self.reference_res_spinbox.setRange(0.1, 1_000_000.0)
+        self.reference_res_spinbox.setValue(110_000.0)
+        self.reference_res_spinbox.setSingleStep(100.0)
+        resistance_layout.addWidget(self.reference_res_spinbox)
+        resistance_layout.addStretch()
+        acquisition_layout.addLayout(resistance_layout)
         daq_buttons = QHBoxLayout()
         self.start_daq_button = QPushButton("Start DAQ")
         self.stop_daq_button = QPushButton("Stop DAQ")
@@ -465,6 +476,9 @@ class PlotTab(QWidget):
 
     def experiment_description(self) -> str:
         return self.experiment_description_edit.toPlainText().strip()
+
+    def reference_resistance_ohms(self) -> float:
+        return float(self.reference_res_spinbox.value())
 
     def _update_motion_control_buttons(self):
         can_control = self._motor_initialized and self._motion_controls_enabled

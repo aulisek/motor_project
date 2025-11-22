@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         max_deceleration,
         prof_deceleration,
         prof_velocity,
+        reference_resistance,
     ):
         positions_summary = []
         for idx, count in enumerate(plan.positions):
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow):
             "acceleration": {"max_acc": max_acceleration, "profile_acc": prof_acceleration},
             "deceleration": {"max_dec": max_deceleration, "profile_dec": prof_deceleration},
             "velocity": prof_velocity,
+            "reference_resistance": reference_resistance,
         }
 
     def start_motion(self):
@@ -120,6 +122,7 @@ class MainWindow(QMainWindow):
         end_velocity = 0
         home_position = 3600
 
+        reference_resistance = self.plot_tab.reference_resistance_ohms()
         experiment_metadata = self._collect_experiment_metadata(
             plan,
             max_acceleration,
@@ -127,12 +130,14 @@ class MainWindow(QMainWindow):
             max_deceleration,
             prof_deceleration,
             prof_velocity,
+            reference_resistance,
         )
 
         self._set_motion_ui_enabled(False)
         self.plot_tab.set_status("Preparing motion...")
         # Always stop any existing DAQ session so each motion gets a fresh log
         self.plot_manager.stop_acquisition()
+        self.plot_manager.set_reference_resistance(reference_resistance)
         self.plot_manager.set_experiment_metadata(experiment_metadata)
         self.plot_manager.reset_plot_data()
         # Ensure DAQ logging is running whenever we kick off a motion sequence

@@ -27,14 +27,24 @@ class PlotManager:
         self.data_plot.setLabel("left", "Resistance (Ω)")
         self.data_plot.setLabel("bottom", "Sample count")
         self.data_plot.showGrid(x=True, y=True)
-        self.data_curve = self.data_plot.plot(pen=pg.mkPen(color="r", width=1))
+        # Draw markers so individual samples remain visible on dense traces.
+        sample_symbol = {"symbol": "x", "symbolSize": 8}
+        self.data_curve = self.data_plot.plot(
+            pen=pg.mkPen(color="r", width=1),
+            symbolPen=pg.mkPen(color="r"),
+            **sample_symbol,
+        )
 
         self.position_plot = position_widget
         self.position_plot.setTitle("Motor Position")
         self.position_plot.setLabel("left", "Angle (°)")
         self.position_plot.setLabel("bottom", "Sample count")
         self.position_plot.showGrid(x=True, y=True)
-        self.position_curve = self.position_plot.plot(pen=pg.mkPen(color="b", width=1))
+        self.position_curve = self.position_plot.plot(
+            pen=pg.mkPen(color="b", width=1),
+            symbolPen=pg.mkPen(color="b"),
+            **sample_symbol,
+        )
 
     def update_plot(self):
         self.data_curve.setData(self.resistance_buffer)

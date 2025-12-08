@@ -150,7 +150,8 @@ class DAQController(QThread):
             try:
                 reference = max(0.0001, float(self.reference_resistance))
                 denominator = max(1e-6, 5.0 - voltage)
-                resistance = (voltage * reference) / denominator  # resistance in ohms (assuming voltage divider)
+                #resistance = (voltage * 1000) / denominator  # resistance in ohms (assuming voltage divider)
+                resistance = (9000 * (5-voltage))/voltage
             except (ZeroDivisionError, ValueError):
                 resistance = 0.0
 

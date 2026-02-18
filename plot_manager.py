@@ -96,6 +96,9 @@ class PlotManager:
         """Forward the user-selected reference resistor to the DAQ thread."""
         self.daq_controller.set_reference_resistance(value)
 
+    def set_resistor_position(self, position: str):
+        self.daq_controller.set_resistor_position(position)
+
     def stop_acquisition(self):
         self.daq_controller.stop_logging()
         self._plotting_enabled = False

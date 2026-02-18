@@ -132,6 +132,14 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
         # counter clockwise
           
+    def set_closed_loop(self, enable: bool):
+        """Enable (True) or disable (False) closed loop control via Object 0x3202."""
+        try:
+            # 0x3202:00 Closed Loop Configuration. Bit 0: 1=Closed Loop, 0=Open Loop.
+            value = 1 if enable else 0
+            self.nanolib_helper.write_number(self.device_handle, value, Nanolib.OdIndex(0x3202, 0x00), 32)
+        except Exception as e:
+            print(f"Warning: Could not set closed loop mode: {e}")
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""

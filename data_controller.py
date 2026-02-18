@@ -68,11 +68,16 @@ class DAQController(QThread):
         self._apply_timing_config()
         self._ads_rate_key = DEFAULT_ADS1263_RATE_KEY
         self.reference_resistance = 110000.0  # default reference resistor (Ohms)
+        self.resistor_position = "Top (High Side)"
 
         # === Init ADS1256 ===
         self.adc = ADS1256()
         if self.adc.ADS1256_init() != 0:
             raise RuntimeError("ADS1256 initialization failed.")
+        # buffer off
+        #self.adc.ADS1256_WriteReg(0, 0x00)
+        # buffer on
+        self.adc.ADS1256_WriteReg(0, 0x07)
         self._configure_adc_rate(self._ads_rate_key)
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
         self.adc_channel = 2  # e.g., AIN0
@@ -143,16 +148,21 @@ class DAQController(QThread):
                 gui_interval = self.gui_interval
                 loop_sleep = self.loop_sleep
                 reference_res = self.reference_resistance
+                res_pos = self.resistor_position
 
             # === Read ADC ===
             adc_raw = self.adc.ADS1256_GetChannalValue(self.adc_channel)
-            voltage = adc_raw * 5.0 / 0x7FFFFF  # convert to volts
+            voltage = adc_raw * 5.084 / 0x7FFFFF  # convert to volts
             try:
                 reference = max(0.0001, float(reference_res))
-                denominator = max(1e-6, 5.1- voltage)
-                #resistance = (voltage * 1000) / denominator  # resistance in ohms (assuming voltage divider)
-                #resistance = (reference * (5.1-voltage))/voltage
-                resistance = ((5.1-voltage) / voltage) * reference
+                if "Top" in res_pos:
+                    # Unknown is Top (High Side), Reference is Bottom (Low Side). Measuring across Reference.
+                    # R_unk = R_ref * (Vin - Vout) / Vout
+                    resistance = ((5.084 - voltage) / voltage) * reference
+                else:
+                    # Unknown is Bottom (Low Side), Reference is Top (High Side). Measuring across Unknown.
+                    # R_unk = R_ref * Vout / (Vin - Vout)
+                    resistance = (reference * voltage) / (5.084 - voltage)
             except (ZeroDivisionError, ValueError):
                 resistance = 0.0
 
@@ -255,6 +265,10 @@ class DAQController(QThread):
         with self._config_lock:
             self.reference_resistance = numeric_value
 
+    def set_resistor_position(self, position: str):
+        with self._config_lock:
+            self.resistor_position = position
+
     def cleanup(self):
         """Stop acquisition and release GPIO resources."""
         self.stop()
@@ -296,6 +310,12 @@ class DAQController(QThread):
         ref_res = metadata.get("reference_resistance")
         if ref_res:
             lines.append(f"Reference resistor: {ref_res} Ω")
+        res_pos = metadata.get("resistor_position")
+        if res_pos:
+            lines.append(f"Resistor Position: {res_pos}")
+        loop_mode = metadata.get("loop_mode")
+        if loop_mode:
+            lines.append(f"Control Mode: {loop_mode}")
 
         positions = metadata.get("positions")
         if positions:

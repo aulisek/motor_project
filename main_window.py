@@ -44,10 +44,12 @@ class MainWindow(QMainWindow):
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
         self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)
         self.plot_tab.reference_resistance_changed.connect(self.plot_manager.set_reference_resistance)  # Connect the new signal
+        self.plot_tab.resistor_position_changed.connect(self.plot_manager.set_resistor_position)
         self.plot_tab.connect_port_requested.connect(self.select_com_port)
         self.plot_tab.emit_current_daq_rate()
         self.plot_tab.emit_current_positions()
         self.plot_tab.emit_current_reference_resistance()
+        self.plot_tab.emit_current_resistor_position()
 
     def _get_ramp_preview_motion_params(self):
         widget = getattr(self, "ramp_preview_tab", None)
@@ -78,6 +80,8 @@ class MainWindow(QMainWindow):
         prof_deceleration,
         prof_velocity,
         reference_resistance,
+        loop_mode,
+        resistor_position,
     ):
         positions_summary = []
         for idx, count in enumerate(plan.positions):
@@ -98,6 +102,8 @@ class MainWindow(QMainWindow):
             "deceleration": {"max_dec": max_deceleration, "profile_dec": prof_deceleration},
             "velocity": prof_velocity,
             "reference_resistance": reference_resistance,
+            "loop_mode": loop_mode,
+            "resistor_position": resistor_position,
         }
 
     def start_motion(self):
@@ -125,6 +131,11 @@ class MainWindow(QMainWindow):
         home_position = 3600
 
         reference_resistance = self.plot_tab.reference_resistance_ohms()
+        resistor_position = self.plot_tab.current_resistor_position()
+        loop_mode = self.plot_tab.get_loop_mode()
+        use_closed_loop = (loop_mode == "Closed Loop")
+        self.motor_controller.set_closed_loop(use_closed_loop)
+
         experiment_metadata = self._collect_experiment_metadata(
             plan,
             max_acceleration,
@@ -133,6 +144,8 @@ class MainWindow(QMainWindow):
             prof_deceleration,
             prof_velocity,
             reference_resistance,
+            loop_mode,
+            resistor_position,
         )
 
         self._set_motion_ui_enabled(False)
@@ -140,6 +153,7 @@ class MainWindow(QMainWindow):
         # Always stop any existing DAQ session so each motion gets a fresh log
         self.plot_manager.stop_acquisition()
         self.plot_manager.set_reference_resistance(reference_resistance)
+        self.plot_manager.set_resistor_position(resistor_position)
         self.plot_manager.set_experiment_metadata(experiment_metadata)
         self.plot_manager.reset_plot_data()
         # Ensure DAQ logging is running whenever we kick off a motion sequence

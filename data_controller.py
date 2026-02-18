@@ -56,7 +56,7 @@ ADS1256_RATE_VALUES = {
 }
 
 class DAQController(QThread):
-    data_signal = pyqtSignal(float, float, float, float, float)  # timestamp, position, resistance, humidity, temperature
+    data_signal = pyqtSignal(float, float, float, float, float, float)  # timestamp, position, resistance, humidity, temperature, voltage
 
     def __init__(self, motor_controller, sample_rate=10, gui_rate=10):
         super().__init__()
@@ -128,7 +128,6 @@ class DAQController(QThread):
 
     def run(self):
         self.running = True
-        self.init_log_file(self.experiment_metadata)
         self.start_time = time.perf_counter()
         self.position_thread = threading.Thread(target=self.update_position_loop, daemon=True)
         self.position_thread.start()
@@ -143,15 +142,17 @@ class DAQController(QThread):
                 position_interval = self.position_interval
                 gui_interval = self.gui_interval
                 loop_sleep = self.loop_sleep
+                reference_res = self.reference_resistance
 
             # === Read ADC ===
             adc_raw = self.adc.ADS1256_GetChannalValue(self.adc_channel)
             voltage = adc_raw * 5.0 / 0x7FFFFF  # convert to volts
             try:
-                reference = max(0.0001, float(self.reference_resistance))
-                denominator = max(1e-6, 5.0 - voltage)
+                reference = max(0.0001, float(reference_res))
+                denominator = max(1e-6, 5.1- voltage)
                 #resistance = (voltage * 1000) / denominator  # resistance in ohms (assuming voltage divider)
-                resistance = (9000 * (5-voltage))/voltage
+                #resistance = (reference * (5.1-voltage))/voltage
+                resistance = ((5.1-voltage) / voltage) * reference
             except (ZeroDivisionError, ValueError):
                 resistance = 0.0
 
@@ -170,10 +171,12 @@ class DAQController(QThread):
 
             # === Emit GUI signal ===
             if self.iteration_count % gui_interval == 0:
-                self.data_signal.emit(timestamp, position, resistance, self.humidity, self.temperature)
+                self.data_signal.emit(timestamp, position, resistance, self.humidity, self.temperature, voltage)
 
             # === Write to CSV ===
-            self.csv_writer.writerow([timestamp, position, resistance, self.humidity, self.temperature])
+            with self._config_lock:
+                if self.csv_writer:
+                    self.csv_writer.writerow([timestamp, position, resistance, self.humidity, self.temperature])
 
             # === No need to wait for the next iteration — PyQt ensures the thread runs separately ===
             time.sleep(max(0.0, loop_sleep - (time.perf_counter() - loop_start)))
@@ -182,6 +185,20 @@ class DAQController(QThread):
             self.log_file.close()
             self.log_file = None
             self.csv_writer = None
+
+    def start_logging(self):
+        """Enable CSV logging (opens file if not already open)."""
+        with self._config_lock:
+            if not self.csv_writer:
+                self.init_log_file(self.experiment_metadata)
+
+    def stop_logging(self):
+        """Disable CSV logging (closes file)."""
+        with self._config_lock:
+            if self.log_file:
+                self.log_file.close()
+                self.log_file = None
+                self.csv_writer = None
 
     def stop(self):
         if not self.isRunning():
@@ -235,7 +252,8 @@ class DAQController(QThread):
             return
         if numeric_value <= 0:
             return
-        self.reference_resistance = numeric_value
+        with self._config_lock:
+            self.reference_resistance = numeric_value
 
     def cleanup(self):
         """Stop acquisition and release GPIO resources."""

@@ -44,6 +44,7 @@ class PlotTab(QWidget):
     positions_changed = pyqtSignal(list, list, list)
     refresh_ports_requested = pyqtSignal()
     connect_port_requested = pyqtSignal(int)
+    reference_resistance_changed = pyqtSignal(float)
 
     def __init__(self, plot_manager, parent=None):
         super().__init__(parent)
@@ -51,6 +52,7 @@ class PlotTab(QWidget):
         self._motor_initialized = False
         self._motion_controls_enabled = True
         self._build_ui()
+        self.plot_manager.daq_controller.data_signal.connect(self._update_live_data)
         self._update_motion_control_buttons()
 
     def _build_ui(self) -> None:
@@ -73,6 +75,15 @@ class PlotTab(QWidget):
         motor_status_layout.addWidget(self.motor_status_indicator)
         self.motor_status_text = QLabel("Motor not initialized")
         motor_status_layout.addWidget(self.motor_status_text)
+        motor_status_layout.addSpacing(20)
+        self.live_angle_label = QLabel("Angle: -- °")
+        motor_status_layout.addWidget(self.live_angle_label)
+        motor_status_layout.addSpacing(10)
+        self.live_voltage_label = QLabel("Voltage: -- V")
+        motor_status_layout.addWidget(self.live_voltage_label)
+        motor_status_layout.addSpacing(10)
+        self.live_resistance_label = QLabel("Resistance: -- Ω")
+        motor_status_layout.addWidget(self.live_resistance_label)
         motor_status_layout.addStretch()
         status_layout.addLayout(motor_status_layout)
         self.status_label = QLabel("")
@@ -150,9 +161,10 @@ class PlotTab(QWidget):
         resistance_layout.addWidget(QLabel("Reference resistor (Ω):"))
         self.reference_res_spinbox = QDoubleSpinBox()
         self.reference_res_spinbox.setDecimals(1)
-        self.reference_res_spinbox.setRange(0.1, 1_000_000.0)
+        self.reference_res_spinbox.setRange(0.1, 20_000_000.0)
         self.reference_res_spinbox.setValue(110_000.0)
         self.reference_res_spinbox.setSingleStep(100.0)
+        self.reference_res_spinbox.valueChanged.connect(self.reference_resistance_changed.emit)
         resistance_layout.addWidget(self.reference_res_spinbox)
         resistance_layout.addStretch()
         acquisition_layout.addLayout(resistance_layout)
@@ -367,6 +379,9 @@ class PlotTab(QWidget):
     def emit_current_daq_rate(self):
         self.daq_rate_changed.emit(self.current_daq_rate_key())
 
+    def emit_current_reference_resistance(self):
+        self.reference_resistance_changed.emit(self.reference_resistance_ohms())
+
     def emit_current_positions(self):
         counts, degrees, delays = self._extract_path_data()
         self.positions_changed.emit(counts, degrees, delays)
@@ -479,6 +494,17 @@ class PlotTab(QWidget):
 
     def reference_resistance_ohms(self) -> float:
         return float(self.reference_res_spinbox.value())
+
+    def _update_live_data(self, timestamp, position, resistance, humidity, temperature, voltage):
+        self.live_angle_label.setText(f"Angle: {position:.2f}°")
+        self.live_voltage_label.setText(f"Voltage: {voltage:.3f} V")
+        if resistance >= 1e6:
+            res_str = f"{resistance/1e6:.2f} MΩ"
+        elif resistance >= 1e3:
+            res_str = f"{resistance/1e3:.2f} kΩ"
+        else:
+            res_str = f"{resistance:.1f} Ω"
+        self.live_resistance_label.setText(f"Resistance: {res_str}")
 
     def _update_motion_control_buttons(self):
         can_control = self._motor_initialized and self._motion_controls_enabled

@@ -15,6 +15,7 @@ class PlotManager:
 
         self.position_buffer = deque(maxlen=500)
         self.resistance_buffer = deque(maxlen=500)
+        self._plotting_enabled = False
 
         self._plot_timer = QTimer()
         self._plot_timer.setInterval(50)
@@ -50,7 +51,9 @@ class PlotManager:
         self.data_curve.setData(self.resistance_buffer)
         self.position_curve.setData(self.position_buffer)
 
-    def handle_new_data(self, timestamp, position, resistance, humidity, temperature):
+    def handle_new_data(self, timestamp, position, resistance, humidity, temperature, voltage):
+        if not self._plotting_enabled:
+            return
         self.resistance_buffer.append(resistance)
         self.position_buffer.append(position)
         self._plot_dirty = True
@@ -78,6 +81,13 @@ class PlotManager:
     def start_acquisition(self):
         if not self.daq_controller.isRunning():
             self.daq_controller.start()
+        self.daq_controller.start_logging()
+        self._plotting_enabled = True
+
+    def start_monitoring(self):
+        """Start the DAQ thread for live values without logging to CSV."""
+        if not self.daq_controller.isRunning():
+            self.daq_controller.start()
 
     def set_experiment_metadata(self, metadata: dict):
         self.daq_controller.set_experiment_metadata(metadata or {})
@@ -87,7 +97,9 @@ class PlotManager:
         self.daq_controller.set_reference_resistance(value)
 
     def stop_acquisition(self):
-        self.daq_controller.stop()
+        self.daq_controller.stop_logging()
+        self._plotting_enabled = False
+        self.reset_plot_data()
 
     def set_daq_sample_rate(self, rate_key: str):
         self.daq_controller.set_ads1263_sample_rate(rate_key)

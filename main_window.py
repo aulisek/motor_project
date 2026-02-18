@@ -43,9 +43,11 @@ class MainWindow(QMainWindow):
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
         self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)
+        self.plot_tab.reference_resistance_changed.connect(self.plot_manager.set_reference_resistance)  # Connect the new signal
         self.plot_tab.connect_port_requested.connect(self.select_com_port)
         self.plot_tab.emit_current_daq_rate()
         self.plot_tab.emit_current_positions()
+        self.plot_tab.emit_current_reference_resistance()
 
     def _get_ramp_preview_motion_params(self):
         widget = getattr(self, "ramp_preview_tab", None)
@@ -213,6 +215,7 @@ class MainWindow(QMainWindow):
             self.motor_controller.initialize_motor(selected_index)
             QMessageBox.information(self, "Success", "Motor initialized successfully!")
             self.plot_tab.set_motor_initialized(True)
+            self.plot_manager.start_monitoring()
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
             self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())

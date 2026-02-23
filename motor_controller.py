@@ -130,7 +130,8 @@ class MotorController:
 
         # 0x6082 - Maximum end Velocity
         self.nanolib_helper.write_number(self.device_handle, end_velocity, Nanolib.OdIndex(0x6082, 0x00), 32)  
-        # counter clockwise
+        # Current limit (0x6073)
+        self.nanolib_helper.write_number(self.device_handle, 50, Nanolib.OdIndex(0x6073, 0x00), 16) 
           
     def set_closed_loop(self, enable: bool):
         """Enable (True) or disable (False) closed loop control via Object 0x3202."""
@@ -163,7 +164,7 @@ class MotorController:
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
         #position_value = 10
-        return position_value /10
+        return max(0,(3600 - position_value) / 10)
 
     def stop_motor(self):
         """Stop the movement."""

@@ -1,5 +1,6 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 import RPi.GPIO as GPIO
+import dht22
 import time
 import csv
 import datetime
@@ -77,13 +78,14 @@ class DAQController(QThread):
         # buffer off
         #self.adc.ADS1256_WriteReg(0, 0x00)
         # buffer on
-        self.adc.ADS1256_WriteReg(0, 0x07)
+        #self.adc.ADS1256_WriteReg(0, 0x00)
         self._configure_adc_rate(self._ads_rate_key)
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
         self.adc_channel = 2  # e.g., AIN0
 
         # === Init DHT22 ===
-        self.dht_pin = 17  # GPIO17
+        self.dht_pin = 4  # GPIO17
+        self.dht_instance = dht22.DHT22(pin=self.dht_pin)
         self.humidity = 0.0
         self.temperature = 0.0
 
@@ -129,7 +131,7 @@ class DAQController(QThread):
                     self.position = new_position
             except Exception as e:
                 print(f"[Motor Read Error] {e}")
-            time.sleep(0.03)  # 30 ms ≈ 33 Hz
+            #time.sleep(0.03)  # 30 ms ≈ 33 Hz
 
     def run(self):
         self.running = True
@@ -175,9 +177,10 @@ class DAQController(QThread):
 
             # === Read DHT22 ===
             if self.iteration_count % dht_interval == 0:
-                # humidity, temperature = Adafruit_DHT.read_retry(...)
-                self.humidity = 0.0
-                self.temperature = 0.0
+                result = self.dht_instance.read()
+                if result.is_valid():
+                    self.humidity = result.humidity
+                    self.temperature = result.temperature
 
             # === Emit GUI signal ===
             if self.iteration_count % gui_interval == 0:

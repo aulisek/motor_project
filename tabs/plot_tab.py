@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 )
 from pyqtgraph import PlotWidget
 
-from data_controller import ADS1263_SAMPLE_RATE_LABELS, DEFAULT_ADS1263_RATE_KEY
+from data_controller import ADS1256_SAMPLE_RATE_LABELS, DEFAULT_ADS1256_RATE_KEY
 
 
 @dataclass
@@ -179,9 +179,9 @@ class PlotTab(QWidget):
         acquisition_layout = acquisition_group.layout()
         acquisition_layout.addWidget(QLabel("DAQ sampling rate:"))
         self.daq_rate_combo = QComboBox()
-        for key, label in ADS1263_SAMPLE_RATE_LABELS:
+        for key, label in ADS1256_SAMPLE_RATE_LABELS:
             self.daq_rate_combo.addItem(label, key)
-        default_index = self.daq_rate_combo.findData(DEFAULT_ADS1263_RATE_KEY)
+        default_index = self.daq_rate_combo.findData(DEFAULT_ADS1256_RATE_KEY)
         if default_index >= 0:
             self.daq_rate_combo.setCurrentIndex(default_index)
         self.daq_rate_combo.currentIndexChanged.connect(self._handle_daq_rate_change)
@@ -417,7 +417,7 @@ class PlotTab(QWidget):
         self.daq_rate_changed.emit(self.current_daq_rate_key())
 
     def current_daq_rate_key(self) -> str:
-        return self.daq_rate_combo.currentData() or DEFAULT_ADS1263_RATE_KEY
+        return self.daq_rate_combo.currentData() or DEFAULT_ADS1256_RATE_KEY
 
     def current_daq_rate_label(self) -> str:
         return self.daq_rate_combo.currentText()

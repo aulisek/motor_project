@@ -130,6 +130,10 @@ class PlotManager:
         """Forward the user-selected resistor position to the DAQ thread."""
         self.daq_controller.set_resistor_position(position)
 
+    def set_current_cycle(self, cycle: int):
+        """Forward the current active cycle to the DAQ thread for CSV logging."""
+        self.daq_controller.set_current_cycle(cycle)
+
     def stop_acquisition(self):
         """Halts the CSV logging, stops UI plotting, and clears the visual graphs."""
         self.daq_controller.stop_logging()
@@ -138,7 +142,7 @@ class PlotManager:
 
     def set_daq_sample_rate(self, rate_key: str):
         """Updates the ADC sampling frequency based on the user's dropdown selection."""
-        self.daq_controller.set_ads1263_sample_rate(rate_key)
+        self.daq_controller.set_ads1256_sample_rate(rate_key)
 
     def shutdown(self):
         """Completely stop and release DAQ resources."""

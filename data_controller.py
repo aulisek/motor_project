@@ -16,7 +16,7 @@ from ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
 
 
 def _parse_rate_value(name: str) -> float:
-    """Convert rate tokens like ADS1263_16d6SPS into float SPS values."""
+    """Convert rate tokens like ADS1256_2d5SPS into float SPS values."""
     raw = name.split("_")[1]
     raw = raw.replace("d", ".").replace("SPS", "")
     try:
@@ -32,34 +32,17 @@ def _format_rate_label(value: float) -> str:
     return f"{value:.1f} SPS"
 
 
-ADS1263_SAMPLE_RATES = {
-    "ADS1263_38400SPS": {"code": 0xF, "sps": 38400.0},
-    "ADS1263_19200SPS": {"code": 0xE, "sps": 19200.0},
-    "ADS1263_14400SPS": {"code": 0xD, "sps": 14400.0},
-    "ADS1263_7200SPS": {"code": 0xC, "sps": 7200.0},
-    "ADS1263_4800SPS": {"code": 0xB, "sps": 4800.0},
-    "ADS1263_2400SPS": {"code": 0xA, "sps": 2400.0},
-    "ADS1263_1200SPS": {"code": 0x9, "sps": 1200.0},
-    "ADS1263_400SPS": {"code": 0x8, "sps": 400.0},
-    "ADS1263_100SPS": {"code": 0x7, "sps": 100.0},
-    "ADS1263_60SPS": {"code": 0x6, "sps": 60.0},
-    "ADS1263_50SPS": {"code": 0x5, "sps": 50.0},
-    "ADS1263_20SPS": {"code": 0x4, "sps": 20.0},
-    "ADS1263_16d6SPS": {"code": 0x3, "sps": 16.6},
-    "ADS1263_10SPS": {"code": 0x2, "sps": 10.0},
-    "ADS1263_5SPS": {"code": 0x1, "sps": 5.0},
-    "ADS1263_2d5SPS": {"code": 0x0, "sps": 2.5},
+ADS1256_SAMPLE_RATES = {
+    name: {"code": code, "sps": _parse_rate_value(name)}
+    for name, code in ADS1256_DRATE_E.items()
+    if _parse_rate_value(name) <= 10.0
 }
 
-DEFAULT_ADS1263_RATE_KEY = "ADS1263_10SPS"
+DEFAULT_ADS1256_RATE_KEY = "ADS1256_10SPS"
 
-ADS1263_SAMPLE_RATE_LABELS = [
-    (key, _format_rate_label(values["sps"])) for key, values in ADS1263_SAMPLE_RATES.items()
+ADS1256_SAMPLE_RATE_LABELS = [
+    (key, _format_rate_label(values["sps"])) for key, values in ADS1256_SAMPLE_RATES.items()
 ]
-
-ADS1256_RATE_VALUES = {
-    name: _parse_rate_value(name) for name in ADS1256_DRATE_E.keys()
-}
 
 class DAQController(QThread):
     """
@@ -79,7 +62,7 @@ class DAQController(QThread):
         self.gui_rate_hz = max(1, int(gui_rate))
         self._config_lock = threading.Lock()
         self._apply_timing_config()
-        self._ads_rate_key = DEFAULT_ADS1263_RATE_KEY
+        self._ads_rate_key = DEFAULT_ADS1256_RATE_KEY
         self.reference_resistance = 110000.0  # default reference resistor (Ohms)
         self.resistor_position = "Top (High Side)"
 
@@ -106,6 +89,7 @@ class DAQController(QThread):
         self.log_file = None
         self.csv_writer = None
         self.experiment_metadata = {}
+        self.current_cycle = 1
 
     def _apply_timing_config(self):
         """Recalculate timing intervals based on the configured sample rate."""
@@ -127,7 +111,7 @@ class DAQController(QThread):
         self.log_file = open(filename, mode='w', newline='')
         self.csv_writer = csv.writer(self.log_file)
         self._write_metadata_header(metadata or {})
-        self.csv_writer.writerow(["timestamp", "position", "resistance", "humidity", "temperature"])
+        self.csv_writer.writerow(["timestamp", "position", "resistance", "humidity", "temperature", "cycle"])
 
         print(f"[DAQ] Logging started → {filename}")
 
@@ -163,6 +147,7 @@ class DAQController(QThread):
                 loop_sleep = self.loop_sleep
                 reference_res = self.reference_resistance
                 res_pos = self.resistor_position
+                current_cycle = self.current_cycle
 
             # === Read ADC ===
             adc_raw = self.adc.ADS1256_GetChannalValue(self.adc_channel)
@@ -201,7 +186,7 @@ class DAQController(QThread):
             # === Write to CSV ===
             with self._config_lock:
                 if self.csv_writer:
-                    self.csv_writer.writerow([timestamp, position, resistance, self.humidity, self.temperature])
+                    self.csv_writer.writerow([timestamp, position, resistance, self.humidity, self.temperature, current_cycle])
 
             # === No need to wait for the next iteration — PyQt ensures the thread runs separately ===
             time.sleep(max(0.0, loop_sleep - (time.perf_counter() - loop_start)))
@@ -254,27 +239,28 @@ class DAQController(QThread):
 
     def _configure_adc_rate(self, rate_key: str):
         """
-        Map the requested ADS1263 rate string to the closest ADS1256 configuration.
+        Configure the ADS1256 sample rate based on the requested rate key.
         Args:
-            rate_key (str): The configuration key mapping (e.g., 'ADS1263_10SPS').
+            rate_key (str): The configuration key mapping (e.g., 'ADS1256_10SPS').
         """
-        target = ADS1263_SAMPLE_RATES.get(rate_key, ADS1263_SAMPLE_RATES[DEFAULT_ADS1263_RATE_KEY])["sps"]
-        best_ads1256 = min(ADS1256_RATE_VALUES.items(), key=lambda item: abs(item[1] - target))[0]
+        if rate_key not in ADS1256_SAMPLE_RATES:
+            rate_key = DEFAULT_ADS1256_RATE_KEY
+            
         self.adc.ADS1256_ConfigADC(
             ADS1256_GAIN_E['ADS1256_GAIN_1'],
-            ADS1256_DRATE_E[best_ads1256]
+            ADS1256_SAMPLE_RATES[rate_key]["code"]
         )
 
-    def set_ads1263_sample_rate(self, rate_key: str):
+    def set_ads1256_sample_rate(self, rate_key: str):
         """
         Public hook to adjust sampling speed using predefined presets.
         Args:
             rate_key (str): Chosen preset rate key.
         """
-        if rate_key not in ADS1263_SAMPLE_RATES:
-            rate_key = DEFAULT_ADS1263_RATE_KEY
+        if rate_key not in ADS1256_SAMPLE_RATES:
+            rate_key = DEFAULT_ADS1256_RATE_KEY
         self._ads_rate_key = rate_key
-        target = ADS1263_SAMPLE_RATES[rate_key]["sps"]
+        target = ADS1256_SAMPLE_RATES[rate_key]["sps"]
         self.change_sample_rate(max(1, int(round(target))))
         self._configure_adc_rate(rate_key)
 
@@ -301,6 +287,11 @@ class DAQController(QThread):
         """Set whether the reference resistor is on the Top (High Side) or Bottom (Low Side)."""
         with self._config_lock:
             self.resistor_position = position
+
+    def set_current_cycle(self, cycle: int):
+        """Updates the current cycle number for CSV logging."""
+        with self._config_lock:
+            self.current_cycle = cycle
 
     def cleanup(self):
         """Stop acquisition thread safely and release GPIO resources."""

@@ -175,6 +175,7 @@ class MainWindow(QMainWindow):
         self.plot_manager.set_reference_resistance(reference_resistance)
         self.plot_manager.set_resistor_position(resistor_position)
         self.plot_manager.set_experiment_metadata(experiment_metadata)
+        self.plot_manager.set_current_cycle(1)
         self.plot_manager.reset_plot_data()
         # Ensure DAQ logging is running whenever we kick off a motion sequence
         self.plot_manager.start_acquisition()
@@ -235,6 +236,7 @@ class MainWindow(QMainWindow):
     def _handle_cycle_progress(self, completed_cycles: int):
         """Updates the progress bar in the UI based on completed motion cycles."""
         self.plot_tab.set_progress_cycles(completed_cycles)
+        self.plot_manager.set_current_cycle(completed_cycles + 1)
 
     def update_com_ports(self):
         """Polls the Nanolib wrapper for available hardware COM ports."""

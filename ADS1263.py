@@ -27,8 +27,10 @@
 # THE SOFTWARE.
 #
 
-import config
+from . import config
 import RPi.GPIO as GPIO
+import logging
+logger = logging.getLogger(__name__)
 
 # gain
 ADS1263_GAIN = {
@@ -224,7 +226,7 @@ class ADS1263:
             if(config.digital_read(self.drdy_pin) == 0):
                 break
             if(i >= 400000):
-                print ("Time Out ...\r\n")
+                logger.warning("Time Out ...")
                 break
         
     # Check chip ID, success is return 1
@@ -243,30 +245,30 @@ class ADS1263:
         MODE2 |= (gain << 4) | drate
         self.ADS1263_WriteReg(ADS1263_REG['REG_MODE2'], MODE2)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_MODE2'])[0] == MODE2):
-            print("REG_MODE2 success")
+            logger.debug("REG_MODE2 success")
         else:
-            print("REG_MODE2 unsuccess")
+            logger.error("REG_MODE2 unsuccess")
 
         REFMUX = 0x24   # 0x00:+-2.5V as REF, 0x24:VDD,VSS as REF
         self.ADS1263_WriteReg(ADS1263_REG['REG_REFMUX'], REFMUX)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_REFMUX'])[0] == REFMUX):
-            print("REG_REFMUX success")
+            logger.debug("REG_REFMUX success")
         else:
-            print("REG_REFMUX unsuccess")
+            logger.error("REG_REFMUX unsuccess")
             
         MODE0 = ADS1263_DELAY['ADS1263_DELAY_35us']
         self.ADS1263_WriteReg(ADS1263_REG['REG_MODE0'], MODE0)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_MODE0'])[0] == MODE0):
-            print("REG_MODE0 success")
+            logger.debug("REG_MODE0 success")
         else:
-            print("REG_MODE0 unsuccess")
+            logger.error("REG_MODE0 unsuccess")
 
         MODE1 = 0x84    # Digital Filter; 0x84:FIR, 0x64:Sinc4, 0x44:Sinc3, 0x24:Sinc2, 0x04:Sinc1
         self.ADS1263_WriteReg(ADS1263_REG['REG_MODE1'], MODE1)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_MODE1'])[0] == MODE1):
-            print("REG_MODE1 success")
+            logger.debug("REG_MODE1 success")
         else:
-            print("REG_MODE1 unsuccess")
+            logger.error("REG_MODE1 unsuccess")
 
     #The configuration parameters of ADC2, gain and data rate
     def ADS1263_ConfigADC2(self, gain, drate):
@@ -274,16 +276,16 @@ class ADS1263:
         ADC2CFG |= (drate << 6) | gain
         self.ADS1263_WriteReg(ADS1263_REG['REG_ADC2CFG'], ADC2CFG)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_ADC2CFG'])[0] == ADC2CFG):
-            print("REG_ADC2CFG success")
+            logger.debug("REG_ADC2CFG success")
         else:
-            print("REG_ADC2CFG unsuccess")
+            logger.error("REG_ADC2CFG unsuccess")
             
         MODE0 = ADS1263_DELAY['ADS1263_DELAY_35us']
         self.ADS1263_WriteReg(ADS1263_REG['REG_MODE0'], MODE0)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_MODE0'])[0] == MODE0):
-            print("REG_MODE0 success")
+            logger.debug("REG_MODE0 success")
         else:
-            print("REG_MODE0 unsuccess")
+            logger.error("REG_MODE0 unsuccess")
             
 
     # Set ADC1 Measuring channel
@@ -293,10 +295,10 @@ class ADS1263:
         INPMUX = (Channal << 4) | 0x0a
         self.ADS1263_WriteReg(ADS1263_REG['REG_INPMUX'], INPMUX)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_INPMUX'])[0] == INPMUX):
-            # print("REG_INPMUX success")
+            logger.debug("REG_INPMUX success")
             pass
         else:
-            print("REG_INPMUX unsuccess")
+            logger.error("REG_INPMUX unsuccess")
 
 
     # Set ADC2 Measuring channel
@@ -306,10 +308,10 @@ class ADS1263:
         INPMUX = (Channal << 4) | 0x0a
         self.ADS1263_WriteReg(ADS1263_REG['REG_ADC2MUX'], INPMUX)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_ADC2MUX'])[0] == INPMUX):
-            # print("REG_ADC2MUX success")
+            logger.debug("REG_ADC2MUX success")
             pass
         else:
-            print("REG_ADC2MUX unsuccess")
+            logger.error("REG_ADC2MUX unsuccess")
             
 
     # Set ADC1 Measuring differential channel
@@ -326,10 +328,10 @@ class ADS1263:
             INPMUX = (8<<4) | 9     #DiffChannal    AIN8-AIN9
         self.ADS1263_WriteReg(ADS1263_REG['REG_INPMUX'], INPMUX)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_INPMUX'])[0] == INPMUX):
-            # print("REG_INPMUX success")
+            logger.debug("REG_INPMUX success")
             pass
         else:
-            print("REG_INPMUX unsuccess")
+            logger.error("REG_INPMUX unsuccess")
             
 
     # Set ADC2 Measuring differential channel
@@ -346,10 +348,10 @@ class ADS1263:
             INPMUX = (8<<4) | 9     #DiffChannal    AIN8-AIN9
         self.ADS1263_WriteReg(ADS1263_REG['REG_ADC2MUX'], INPMUX)
         if(self.ADS1263_ReadData(ADS1263_REG['REG_ADC2MUX'])[0] == INPMUX):
-            # print("REG_ADC2MUX success")
+            logger.debug("REG_ADC2MUX success")
             pass
         else:
-            print("REG_ADC2MUX unsuccess")
+            logger.error("REG_ADC2MUX unsuccess")
             
 
     # Device initialization (ADC1)
@@ -359,9 +361,9 @@ class ADS1263:
         self.ADS1263_reset()
         id = self.ADS1263_ReadChipID()
         if id == 0x01 :
-            print("ID Read success  ")
+            logger.info("ID Read success")
         else:
-            print("ID Read failed   ")
+            logger.error("ID Read failed")
             return -1
         self.ADS1263_WriteCmd(ADS1263_CMD['CMD_STOP1'])
         self.ADS1263_ConfigADC(ADS1263_GAIN['ADS1263_GAIN_1'], ADS1263_DRATE[Rate1])
@@ -376,9 +378,9 @@ class ADS1263:
         self.ADS1263_reset()
         id = self.ADS1263_ReadChipID()
         if id == 0x01 :
-            print("ID Read success  ")
+            logger.info("ID Read success")
         else:
-            print("ID Read failed   ")
+            logger.error("ID Read failed")
             return -1
         self.ADS1263_WriteCmd(ADS1263_CMD['CMD_STOP2'])
         self.ADS1263_ConfigADC2(ADS1263_ADC2_GAIN['ADS1263_ADC2_GAIN_1'], ADS1263_ADC2_DRATE[Rate2])
@@ -400,9 +402,8 @@ class ADS1263:
         read |= (buf[2]<<8) & 0xff00
         read |= (buf[3]) & 0xff
         CRC = buf[4]
-        # print(read, CRC)
         if(self.ADS1263_CheckSum(read, CRC) != 0):
-            print("ADC1 data read error!")
+            logger.error("ADC1 data read error!")
         return read
  
  
@@ -422,7 +423,7 @@ class ADS1263:
         read |= (buf[2]) & 0xff
         CRC = buf[4]
         if(self.ADS1263_CheckSum(read, CRC) != 0):
-            print("ADC2 data read error!")
+            logger.error("ADC2 data read error!")
         return read
         
         
@@ -430,14 +431,14 @@ class ADS1263:
     def ADS1263_GetChannalValue(self, Channel):
         if(self.ScanMode == 0):# 0  Single-ended input 10 channel Differential input 5 channel 
             if(Channel>10):
-                print("The number of channels must be less than 10")
+                logger.warning("The number of channels must be less than 10")
                 return 0
             self.ADS1263_SetChannal(Channel)
             self.ADS1263_WaitDRDY()
             Value = self.ADS1263_Read_ADC_Data()
         else:
             if(Channel>4):
-                print("The number of channels must be less than 5")
+                logger.warning("The number of channels must be less than 5")
                 return 0
             self.ADS1263_SetDiffChannal(Channel)
             self.ADS1263_WaitDRDY()
@@ -449,7 +450,7 @@ class ADS1263:
     def ADS1263_GetChannalValue_ADC2(self, Channel):
         if(self.ScanMode == 0):# 0  Single-ended input 10 channel Differential input 5 channel
             if(Channel>10):
-                print("The number of channels must be less than 10")
+                logger.warning("The number of channels must be less than 10")
                 return 0
             self.ADS1263_SetChannal_ADC2(Channel)
             # config.delay_ms(2)
@@ -458,7 +459,7 @@ class ADS1263:
             Value = self.ADS1263_Read_ADC2_Data()
         else:
             if(Channel>4):
-                print("The number of channels must be less than 5")
+                logger.warning("The number of channels must be less than 5")
                 return 0
             self.ADS1263_SetDiffChannal_ADC2(Channel)
             # config.delay_ms(2) 
@@ -548,4 +549,3 @@ class ADS1263:
         config.module_exit()
         
 ### END OF FILE ###
-

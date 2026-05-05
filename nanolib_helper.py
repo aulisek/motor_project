@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from nanotec_nanolib import Nanolib
+import logging
+logger = logging.getLogger(__name__)
 
 # ============================================================ #
 
@@ -9,12 +11,9 @@ class ScanBusCallback(Nanolib.NlcScanBusCallback): # override super class
         super().__init__()
     def callback(self, info, devicesFound, data):
         if info == Nanolib.BusScanInfo_Start :
-            print('Scan started.')
-        elif info == Nanolib.BusScanInfo_Progress :
-            if (data & 1) == 0 :
-                print('.', end='', flush=True)
+            logger.info('Scan started.')
         elif info == Nanolib.BusScanInfo_Finished :
-            print('\nScan finished.')
+            logger.info('Scan finished.')
 
         return Nanolib.ResultVoid()
 

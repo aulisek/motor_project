@@ -10,8 +10,9 @@ from PyQt5.QtWidgets import (
 )
 import numpy as np
 import pyqtgraph as pg
+import core.constants as const
 
-COUNTS_PER_REV = 3600.0  # 0.1°/count → 360°/rev → 3600 counts/rev
+COUNTS_PER_REV = const.COUNTS_PER_REV
 
 # ---- Trapezoid/Triangle motion profile solver (v rev, rev/s, rev/s²) ----
 def solve_trapezoid(distance_rev, v_max_rps, a_up_rs2, a_down_rs2, dt=0.001):
@@ -102,7 +103,7 @@ class RampPreviewWidget(QWidget):
     def __init__(self, motor_controller=None, parent=None):
         super().__init__(parent)
         self.motor_controller = motor_controller
-        self.home_position_counts = 3600.0
+        self.home_position_counts = float(const.DEFAULT_HOME_POSITION)
         self.home_position_deg = 0.0
         self.motion_positions_counts = []
         self.motion_positions_deg = []

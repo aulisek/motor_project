@@ -1,10 +1,15 @@
 from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import QMainWindow, QTabWidget, QMessageBox
+import logging
 
-from motion_worker import MotionWorker
-from plot_manager import PlotManager
-from ramp_preview import RampPreviewWidget
+logger = logging.getLogger(__name__)
+
+from core.motion_worker import MotionWorker
+from core.plot_manager import PlotManager
+from tabs.ramp_preview import RampPreviewWidget
 from tabs.plot_tab import PlotTab
+from tabs.analysis_tab import AnalysisTab
+import core.constants as const
 
 
 class MainWindow(QMainWindow):
@@ -36,9 +41,11 @@ class MainWindow(QMainWindow):
 
         self.plot_tab = PlotTab(self.plot_manager)
         self.ramp_preview_tab = RampPreviewWidget(self.motor_controller)
+        self.analysis_tab = AnalysisTab()
 
         self.tab_widget.addTab(self.plot_tab, "Data plots")
         self.tab_widget.addTab(self.ramp_preview_tab, "Ramp Preview")
+        self.tab_widget.addTab(self.analysis_tab, "Data Analysis")
 
         self.setCentralWidget(self.tab_widget)
         self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
@@ -102,7 +109,7 @@ class MainWindow(QMainWindow):
         positions_summary = []
         for idx, count in enumerate(plan.positions):
             delay = plan.delays[idx] if idx < len(plan.delays) else 0
-            degrees = round((3600 - count) / 10.0, 2)
+            degrees = round((const.DEFAULT_HOME_POSITION - count) / 10.0, 2)
             positions_summary.append(
                 {"index": idx + 1, "counts": count, "degrees": degrees, "delay_ms": delay}
             )
@@ -141,14 +148,14 @@ class MainWindow(QMainWindow):
             prof_deceleration = preview_params["dec"]
             prof_velocity = preview_params["vel"]
         else:
-            max_acceleration = 300
-            prof_acceleration = 300
-            max_deceleration = 300
-            prof_deceleration = 300
-            prof_velocity = 300
+            max_acceleration = const.DEFAULT_KINEMATICS_VALUE
+            prof_acceleration = const.DEFAULT_KINEMATICS_VALUE
+            max_deceleration = const.DEFAULT_KINEMATICS_VALUE
+            prof_deceleration = const.DEFAULT_KINEMATICS_VALUE
+            prof_velocity = const.DEFAULT_KINEMATICS_VALUE
 
         end_velocity = 0
-        home_position = 3600
+        home_position = const.DEFAULT_HOME_POSITION
 
         reference_resistance = self.plot_tab.reference_resistance_ohms()
         resistor_position = self.plot_tab.current_resistor_position()
@@ -242,11 +249,11 @@ class MainWindow(QMainWindow):
         """Polls the Nanolib wrapper for available hardware COM ports."""
         try:
             bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
-            print(f"Bus hardware IDs: {bus_hw}")
-            print(f"Hardware items: {hardware_items}")
+            logger.info(f"Bus hardware IDs: {bus_hw}")
+            logger.info(f"Hardware items: {hardware_items}")
             self.plot_tab.set_com_ports(hardware_items)
         except Exception as exc:
-            print(f"Error updating COM ports: {exc}")
+            logger.error(f"Error updating COM ports: {exc}")
             self.plot_tab.set_com_ports([])
 
     def select_com_port(self, selected_index: int):

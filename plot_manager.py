@@ -2,7 +2,8 @@ from collections import deque
 
 from PyQt5.QtCore import QTimer
 import pyqtgraph as pg
-from data_controller import DAQController
+from core.data_controller import DAQController
+import core.constants as const
 
 
 class PlotManager:
@@ -17,12 +18,12 @@ class PlotManager:
         self.daq_controller = DAQController(self.motor_controller, 500)
         self.daq_controller.data_signal.connect(self.handle_new_data)
 
-        self.position_buffer = deque(maxlen=500)
-        self.resistance_buffer = deque(maxlen=500)
+        self.position_buffer = deque(maxlen=const.PLOT_BUFFER_SIZE)
+        self.resistance_buffer = deque(maxlen=const.PLOT_BUFFER_SIZE)
         self._plotting_enabled = False
 
         self._plot_timer = QTimer()
-        self._plot_timer.setInterval(50)
+        self._plot_timer.setInterval(const.PLOT_UPDATE_INTERVAL_MS)
         self._plot_timer.timeout.connect(self._flush_plot_data)
         self._plot_dirty = False
 

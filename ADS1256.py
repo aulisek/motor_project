@@ -1,5 +1,7 @@
-import config
+from . import config
 import RPi.GPIO as GPIO
+import logging
+logger = logging.getLogger(__name__)
 
 
 ScanMode = 0
@@ -103,14 +105,13 @@ class ADS1256:
                 
                 break
         if(i >= 400000):
-            print ("Time Out ...\r\n")
+            logger.warning("Time Out ...")
         
         
     def ADS1256_ReadChipID(self):
         self.ADS1256_WaitDRDY()
         id = self.ADS1256_Read_data(REG_E['REG_STATUS'])
         id = id[0] >> 4
-        # print 'ID',id
         return id
         
     #The configuration parameters of ADC, gain and data rate
@@ -158,9 +159,9 @@ class ADS1256:
         self.ADS1256_reset()
         id = self.ADS1256_ReadChipID()
         if id == 3 :
-            print("ID Read success  ")
+            logger.info("ID Read success")
         else:
-            print("ID Read failed   ")
+            logger.error("ID Read failed")
             return -1
         self.ADS1256_ConfigADC(ADS1256_GAIN_E['ADS1256_GAIN_1'], ADS1256_DRATE_E['ADS1256_30000SPS'])
         return 0
@@ -207,4 +208,3 @@ class ADS1256:
             ADC_Value[i] = self.ADS1256_GetChannalValue(i)
         return ADC_Value
 ### END OF FILE ###
-

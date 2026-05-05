@@ -28,7 +28,8 @@ from PyQt5.QtWidgets import (
 )
 from pyqtgraph import PlotWidget
 
-from data_controller import ADS1256_SAMPLE_RATE_LABELS, DEFAULT_ADS1256_RATE_KEY
+from core.data_controller import ADS1256_SAMPLE_RATE_LABELS, DEFAULT_ADS1256_RATE_KEY
+import core.constants as const
 
 
 @dataclass
@@ -191,7 +192,7 @@ class PlotTab(QWidget):
         self.reference_res_spinbox = QDoubleSpinBox()
         self.reference_res_spinbox.setDecimals(1)
         self.reference_res_spinbox.setRange(0.1, 20_000_000.0)
-        self.reference_res_spinbox.setValue(110_000.0)
+        self.reference_res_spinbox.setValue(const.DEFAULT_REFERENCE_RESISTANCE)
         self.reference_res_spinbox.setSingleStep(100.0)
         self.reference_res_spinbox.valueChanged.connect(self.reference_resistance_changed.emit)
         resistance_layout.addWidget(self.reference_res_spinbox)
@@ -378,7 +379,7 @@ class PlotTab(QWidget):
                 continue
 
             angle_deg = float(angle_spinbox.value())
-            positions_counts.append(3600 - int(round(angle_deg * 10)))
+            positions_counts.append(int(const.COUNTS_PER_REV) - int(round(angle_deg * 10)))
             delays.append(delay_spinbox.value())
 
         return positions_counts, delays
@@ -471,7 +472,7 @@ class PlotTab(QWidget):
                 continue
             angle_deg = float(angle_spinbox.value())
             positions_degrees.append(angle_deg)
-            positions_counts.append(3600 - int(round(angle_deg * 10)))
+            positions_counts.append(int(const.COUNTS_PER_REV) - int(round(angle_deg * 10)))
             delays_ms.append(delay_spinbox.value() if delay_spinbox else 0)
         return positions_counts, positions_degrees, delays_ms
 

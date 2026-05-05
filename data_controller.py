@@ -10,9 +10,13 @@ import csv
 import datetime
 import threading
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 from ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
+import core.constants as const
 
 
 def _parse_rate_value(name: str) -> float:
@@ -63,8 +67,8 @@ class DAQController(QThread):
         self._config_lock = threading.Lock()
         self._apply_timing_config()
         self._ads_rate_key = DEFAULT_ADS1256_RATE_KEY
-        self.reference_resistance = 110000.0  # default reference resistor (Ohms)
-        self.resistor_position = "Top (High Side)"
+        self.reference_resistance = const.DEFAULT_REFERENCE_RESISTANCE
+        self.resistor_position = const.DEFAULT_RESISTOR_POSITION
 
         # === Init ADS1256 ===
         self.adc = ADS1256()
@@ -72,10 +76,10 @@ class DAQController(QThread):
             raise RuntimeError("ADS1256 initialization failed.")
         self._configure_adc_rate(self._ads_rate_key)
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
-        self.adc_channel = 2  # e.g., AIN0
+        self.adc_channel = const.DEFAULT_ADC_CHANNEL
 
         # === Init DHT22 ===
-        self.dht_pin = 4  # GPIO17
+        self.dht_pin = const.DEFAULT_DHT_PIN
         self.dht_instance = dht22.DHT22(pin=self.dht_pin)
         self.humidity = 0.0
         self.temperature = 0.0
@@ -101,11 +105,11 @@ class DAQController(QThread):
 
     def init_log_file(self, metadata=None):
         # === Create folder if it doesn't exist ===
-        os.makedirs("measurements", exist_ok=True)
+        os.makedirs(const.CSV_OUTPUT_FOLDER, exist_ok=True)
 
         # === Create timestamped file name ===
         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = os.path.join("measurements", f"measurement_{timestamp_str}.csv")
+        filename = os.path.join(const.CSV_OUTPUT_FOLDER, f"measurement_{timestamp_str}.csv")
 
         # === Open file for writing ===
         self.log_file = open(filename, mode='w', newline='')
@@ -113,7 +117,7 @@ class DAQController(QThread):
         self._write_metadata_header(metadata or {})
         self.csv_writer.writerow(["timestamp", "position", "resistance", "humidity", "temperature", "cycle"])
 
-        print(f"[DAQ] Logging started → {filename}")
+        logger.info(f"[DAQ] Logging started → {filename}")
 
     def update_position_loop(self):
         """
@@ -126,7 +130,7 @@ class DAQController(QThread):
                 with self.position_lock:
                     self.position = new_position
             except Exception as e:
-                print(f"[Motor Read Error] {e}")
+                logger.error(f"[Motor Read Error] {e}")
 
     def run(self):
         """Main thread execution block for Data Acquisition."""
@@ -151,17 +155,17 @@ class DAQController(QThread):
 
             # === Read ADC ===
             adc_raw = self.adc.ADS1256_GetChannalValue(self.adc_channel)
-            voltage = adc_raw * 5.084 / 0x7FFFFF  # convert to volts
+            voltage = adc_raw * const.ADC_VOLTAGE / const.ADC_MAX_VALUE  # convert to volts
             try:
                 reference = max(0.0001, float(reference_res))
                 if "Top" in res_pos:
                     # Unknown is Top (High Side), Reference is Bottom (Low Side). Measuring across Reference.
                     # R_unk = R_ref * (Vin - Vout) / Vout
-                    resistance = ((5.084 - voltage) / voltage) * reference
+                    resistance = ((const.ADC_VOLTAGE - voltage) / voltage) * reference
                 else:
                     # Unknown is Bottom (Low Side), Reference is Top (High Side). Measuring across Unknown.
                     # R_unk = R_ref * Vout / (Vin - Vout)
-                    resistance = (reference * voltage) / (5.084 - voltage)
+                    resistance = (reference * voltage) / (const.ADC_VOLTAGE - voltage)
             except (ZeroDivisionError, ValueError):
                 resistance = 0.0
 

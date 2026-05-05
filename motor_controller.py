@@ -1,5 +1,9 @@
-from nanolib_helper import Nanolib, NanolibHelper
+from core.nanolib_helper import Nanolib, NanolibHelper
 import threading
+import logging
+import core.constants as const
+
+logger = logging.getLogger(__name__)
 
 class MotorController:
     """
@@ -159,7 +163,7 @@ class MotorController:
             value = 1 if enable else 0
             self.nanolib_helper.write_number(self.device_handle, value, Nanolib.OdIndex(0x3202, 0x00), 32)
         except Exception as e:
-            print(f"Warning: Could not set closed loop mode: {e}")
+            logger.warning(f"Could not set closed loop mode: {e}")
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
@@ -179,7 +183,7 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        return max(0,(3600 - position_value) / 10)
+        return max(0,(const.DEFAULT_HOME_POSITION - position_value) / 10)
 
     def stop_motor(self):
         """Stop the movement."""
@@ -213,17 +217,17 @@ class MotorController:
         
         # 3. Get current position
         current_position = self.get_position()*10
-        print(f"Current Position before homing: {current_position}")
+        logger.info(f"Current Position before homing: {current_position}")
 
         # 4. Calculate and write offset
-        desired_home_position = 3600  # We want the current position to correspond to 3600
-        home_offset = 3600
+        desired_home_position = const.DEFAULT_HOME_POSITION
+        home_offset = const.DEFAULT_HOME_POSITION
         self.nanolib_helper.write_number(self.device_handle, home_offset, Nanolib.OdIndex(0x607C, 0x00), 32)
-        print(f"Home offset set to: {home_offset}")
+        logger.info(f"Home offset set to: {home_offset}")
         self.nanolib_helper.write_number(self.device_handle, 0b10000, Nanolib.OdIndex(0x6040, 0x00), 16)
         # 5. Verify offset write
         read_offset = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x607C, 0x00))
-        print(f"Verified home offset: {read_offset}")
+        logger.info(f"Verified home offset: {read_offset}")
         self.nanolib_helper.write_number(self.device_handle, 15, Nanolib.OdIndex(0x6040, 0x00), 16)  # Enable operation
 
         self.enable_voltage()
@@ -232,7 +236,7 @@ class MotorController:
         self.set_profile_position_mode()
         # 7. Verify new position - should correspond to 3600
         new_position = self.get_position()
-        print(f"New Actual Position after setting home: {new_position}")
+        logger.info(f"New Actual Position after setting home: {new_position}")
 
         self.stop_motor()
 

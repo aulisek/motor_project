@@ -4,7 +4,7 @@ Provides threaded background reading of sensors (ADC, DHT22) and motor parameter
 """
 from PyQt5.QtCore import QThread, pyqtSignal
 import RPi.GPIO as GPIO
-import dht22
+import hardware.dht22 as dht22
 import time
 import csv
 import datetime
@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-from ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
+from hardware.ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
 import core.constants as const
 
 

@@ -1,3 +1,8 @@
+"""
+Module containing a widget for a graphical preview of acceleration and motion ramps (RampPreviewWidget).
+Generates a simplified kinematic model (trapezoidal/triangular) and sends
+these acceleration settings back to the controller.
+"""
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QDoubleSpinBox,
@@ -11,11 +16,18 @@ COUNTS_PER_REV = 3600.0  # 0.1°/count → 360°/rev → 3600 counts/rev
 # ---- Trapezoid/Triangle motion profile solver (v rev, rev/s, rev/s²) ----
 def solve_trapezoid(distance_rev, v_max_rps, a_up_rs2, a_down_rs2, dt=0.001):
     """
-    distance_rev ... [rev]
-    v_max_rps   ... [rev/s]
-    a_up_rs2    ... [rev/s^2]
-    a_down_rs2  ... [rev/s^2]
-    Returns t, v(t) [rev/s], s(t) [rev], info dict
+    Calculates the velocity and position profile over time using a trapezoidal
+    or triangular (if max velocity is not reached) profile.
+
+    Args:
+        distance_rev (float): Target distance to travel in revolutions.
+        v_max_rps (float): Maximum allowed velocity in rev/s.
+        a_up_rs2 (float): Acceleration in rev/s^2.
+        a_down_rs2 (float): Deceleration in rev/s^2.
+        dt (float): Time step for discretization.
+
+    Returns:
+        tuple: (time axis t, velocity axis v(t), position axis s(t), info_dict)
     """
     L = float(distance_rev)
     v  = float(v_max_rps)
@@ -77,12 +89,15 @@ def solve_trapezoid(distance_rev, v_max_rps, a_up_rs2, a_down_rs2, dt=0.001):
 
 
 class RampPreviewWidget(QWidget):
-    """PyQt widget: preview the ramp and write settings to PD1-C.
-    GUI očekává:
+    """
+    PyQt widget: Provides a graphical preview of the path and velocity and allows
+    applying settings directly to the motor controller.
+    
+    Conversion logic:
       - Motion path: provided from the Plot tab as counts (0.1°)
       - Max velocity: rpm
       - Accel/Decel: rpm/s
-    Náhled přepočítá na rev/rps/rs², grafy zobrazí v rpm a countech.
+    Internal preview recalculates profile to rev/rps/rs², plots are drawn in rpm and degrees.
     """
     def __init__(self, motor_controller=None, parent=None):
         super().__init__(parent)
@@ -99,6 +114,7 @@ class RampPreviewWidget(QWidget):
 
     # ----- UI -----
     def _build_ui(self):
+        """Builds the forms and plots of the widget."""
         layout = QVBoxLayout(self)
 
         form = QFormLayout()
@@ -162,13 +178,14 @@ class RampPreviewWidget(QWidget):
             self.btn_move.setEnabled(False)
 
     def _wire_signals(self):
+        """Connects click signals and value changes to methods for path recalculation."""
         for w in (self.spin_vmax, self.spin_acc, self.spin_dec):
             w.valueChanged.connect(self._recompute)
         self.btn_recompute.clicked.connect(self._recompute)
         self.btn_apply_params.clicked.connect(self._apply_to_drive)
         self.btn_move.clicked.connect(self._move_to_target)
 
-    # ----- Helpers: GUI→solver převody -----
+    # ----- Helpers: GUI→solver conversions -----
     @staticmethod
     def counts_to_rev(counts: float) -> float:
         return counts / COUNTS_PER_REV
@@ -191,12 +208,14 @@ class RampPreviewWidget(QWidget):
 
     # ----- Logic -----
     def set_motion_positions(self, positions_counts, positions_degrees, delays_ms):
+        """Accepts waypoints from the Plot Tab for modeling in the preview."""
         self.motion_positions_counts = list(positions_counts or [])
         self.motion_positions_deg = list(positions_degrees or [])
         self.motion_delays_ms = list(delays_ms or [])
         self._recompute()
 
     def _recompute(self):
+        """Recalculates the path, kinematics of individual route points and redraws plots."""
         v_rpm = self.spin_vmax.value()
         a_up_rpms = self.spin_acc.value()
         a_dn_rpms = self.spin_dec.value()
@@ -303,9 +322,10 @@ class RampPreviewWidget(QWidget):
         self.last_cycle_time_s = total_time
 
     def _apply_to_drive(self):
+        """Writes currently set kinematic ramp values to the motor controller."""
         if self.motor_controller is None:
             return
-        # Zapisujeme v jednotkách driveru (rpm, rpm/s, counts)
+        # Writing in driver units (rpm, rpm/s, counts)
         v_rpm = int(round(self.spin_vmax.value()))
         a_up  = int(round(self.spin_acc.value()))
         a_dn  = int(round(self.spin_dec.value()))
@@ -327,6 +347,7 @@ class RampPreviewWidget(QWidget):
         )
 
     def _move_to_target(self):
+        """Sends a command to the motor to move to the first target position defined in plot_tab."""
         if self.motor_controller is None:
             return
         try:

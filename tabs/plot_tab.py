@@ -1,3 +1,7 @@
+"""
+Main UI tab for experiment visualization, motion configuration, and motor control.
+Represents the interactive graphical interface for setting measurement parameters.
+"""
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -29,13 +33,20 @@ from data_controller import ADS1263_SAMPLE_RATE_LABELS, DEFAULT_ADS1263_RATE_KEY
 
 @dataclass
 class MotionPlan:
+    """
+    Structure representing planned motion segments.
+    Contains positions, delays, and the number of repetitions for the given sequence.
+    """
     positions: List[int]
     delays: List[int]
     repetitions: int = 1
 
 
 class PlotTab(QWidget):
-    """Hosts plot widgets, motion controls, and the position sidebar."""
+    """
+    Main panel (QWidget) hosting measurement plots, motion control, and the motor position list.
+    Handles signal transmission between the UI and hardware controllers.
+    """
 
     start_motion_requested = pyqtSignal()
     stop_motion_requested = pyqtSignal()
@@ -45,8 +56,10 @@ class PlotTab(QWidget):
     refresh_ports_requested = pyqtSignal()
     connect_port_requested = pyqtSignal(int)
     reference_resistance_changed = pyqtSignal(float)
+    resistor_position_changed = pyqtSignal(str)
 
     def __init__(self, plot_manager, parent=None):
+        """Initializes the user interface and connects data signals."""
         super().__init__(parent)
         self.plot_manager = plot_manager
         self._motor_initialized = False
@@ -56,6 +69,7 @@ class PlotTab(QWidget):
         self._update_motion_control_buttons()
 
     def _build_ui(self) -> None:
+        """Builds the entire widget layout within this panel (plots, forms, controls)."""
         root_layout = QHBoxLayout(self)
         root_layout.setContentsMargins(12, 12, 12, 12)
         root_layout.setSpacing(12)
@@ -75,17 +89,27 @@ class PlotTab(QWidget):
         motor_status_layout.addWidget(self.motor_status_indicator)
         self.motor_status_text = QLabel("Motor not initialized")
         motor_status_layout.addWidget(self.motor_status_text)
-        motor_status_layout.addSpacing(20)
-        self.live_angle_label = QLabel("Angle: -- °")
-        motor_status_layout.addWidget(self.live_angle_label)
-        motor_status_layout.addSpacing(10)
-        self.live_voltage_label = QLabel("Voltage: -- V")
-        motor_status_layout.addWidget(self.live_voltage_label)
-        motor_status_layout.addSpacing(10)
-        self.live_resistance_label = QLabel("Resistance: -- Ω")
-        motor_status_layout.addWidget(self.live_resistance_label)
         motor_status_layout.addStretch()
         status_layout.addLayout(motor_status_layout)
+
+        live_data_layout = QHBoxLayout()
+        self.live_angle_label = QLabel("Angle: -- °")
+        live_data_layout.addWidget(self.live_angle_label)
+        live_data_layout.addSpacing(10)
+        self.live_voltage_label = QLabel("Voltage: -- V")
+        live_data_layout.addWidget(self.live_voltage_label)
+        live_data_layout.addSpacing(10)
+        self.live_resistance_label = QLabel("Resistance: -- Ω")
+        live_data_layout.addWidget(self.live_resistance_label)
+        live_data_layout.addSpacing(10)
+        self.live_temperature_label = QLabel("Temperature: -- °C")
+        live_data_layout.addWidget(self.live_temperature_label)
+        live_data_layout.addSpacing(10)
+        self.live_humidity_label = QLabel("Humidity: -- %")
+        live_data_layout.addWidget(self.live_humidity_label)
+        live_data_layout.addStretch()
+        status_layout.addLayout(live_data_layout)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         status_layout.addWidget(self.status_label)
@@ -110,7 +134,7 @@ class PlotTab(QWidget):
         experiment_layout = experiment_group.layout()
         experiment_layout.addWidget(QLabel("Experiment name:"))
         self.experiment_name_edit = QLineEdit()
-        self.experiment_name_edit.setPlaceholderText("e.g., Sample sweep #5")
+        self.experiment_name_edit.setPlaceholderText("e.g., Sample CNF-CNi")
         experiment_layout.addWidget(self.experiment_name_edit)
         experiment_layout.addWidget(QLabel("Description / notes:"))
         self.experiment_description_edit = QPlainTextEdit()
@@ -135,6 +159,11 @@ class PlotTab(QWidget):
         plan_actions = QHBoxLayout()
         plan_actions.addWidget(self.add_position_button)
         plan_actions.addStretch()
+        self.loop_mode_combo = QComboBox()
+        self.loop_mode_combo.addItems(["Closed Loop", "Open Loop"])
+        plan_actions.addWidget(QLabel("Control:"))
+        plan_actions.addWidget(self.loop_mode_combo)
+        plan_actions.addSpacing(10)
         repetitions_layout = QHBoxLayout()
         repetitions_layout.addWidget(QLabel("Repetitions:"))
         self.repetitions_spinbox = QSpinBox()
@@ -166,6 +195,11 @@ class PlotTab(QWidget):
         self.reference_res_spinbox.setSingleStep(100.0)
         self.reference_res_spinbox.valueChanged.connect(self.reference_resistance_changed.emit)
         resistance_layout.addWidget(self.reference_res_spinbox)
+        resistance_layout.addWidget(QLabel("Layer pos:"))
+        self.resistor_pos_combo = QComboBox()
+        self.resistor_pos_combo.addItems(["Top (VCC-V_meas)", "Bottom (V_meas-GND)"])
+        self.resistor_pos_combo.currentTextChanged.connect(self.resistor_position_changed.emit)
+        resistance_layout.addWidget(self.resistor_pos_combo)
         resistance_layout.addStretch()
         acquisition_layout.addLayout(resistance_layout)
         daq_buttons = QHBoxLayout()
@@ -226,6 +260,7 @@ class PlotTab(QWidget):
 
     @staticmethod
     def _create_group_box(title: str) -> QGroupBox:
+        """Creates a standardized box (QGroupBox) with a title for grouping UI elements."""
         group = QGroupBox(title)
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 8, 10, 10)
@@ -234,6 +269,7 @@ class PlotTab(QWidget):
         return group
 
     def _add_position_row(self):
+        """Adds a new row with position and delay settings (angle, slider, and ms delay) to the motion list."""
         position_widget = QWidget()
         position_layout = QHBoxLayout(position_widget)
         position_layout.setContentsMargins(0, 0, 0, 0)
@@ -259,7 +295,7 @@ class PlotTab(QWidget):
         angle_spinbox.valueChanged.connect(self._emit_positions_changed)
 
         delay_slider = QSlider(Qt.Orientation.Horizontal)
-        delay_slider.setRange(0, 5000)
+        delay_slider.setRange(0, 10000000)
         delay_slider.setValue(500)
         delay_slider.setTickInterval(250)
         delay_slider.setTickPosition(QSlider.TicksBelow)
@@ -267,7 +303,8 @@ class PlotTab(QWidget):
 
         delay_spinbox = QSpinBox()
         delay_spinbox.setObjectName("delaySpinbox")
-        delay_spinbox.setRange(0, 5000)
+        delay_spinbox.setRange(0, 10000000)
+        delay_spinbox.setSingleStep(100)
         delay_spinbox.setValue(500)
         delay_spinbox.setSuffix(" ms")
 
@@ -294,6 +331,7 @@ class PlotTab(QWidget):
         self._emit_positions_changed()
 
     def _remove_position_row(self, widget: QWidget):
+        """Removes the specified row (position) from the list of steps for the planned motion."""
         widget.setParent(None)
         widget.deleteLater()
         if self.positions_layout.count() == 0:
@@ -302,6 +340,7 @@ class PlotTab(QWidget):
         self._emit_positions_changed()
 
     def _refresh_position_labels(self):
+        """Refreshes the order text labels for all added positions (Position 1, Position 2...)."""
         for index in range(self.positions_layout.count()):
             item = self.positions_layout.itemAt(index)
             widget = item.widget() if item else None
@@ -312,6 +351,7 @@ class PlotTab(QWidget):
                 label.setText(f"Position {index + 1}:")
 
     def build_motion_plan(self) -> MotionPlan:
+        """Builds and returns a MotionPlan object based on the currently filled UI elements."""
         positions, delays = self._extract_positions_and_delays()
         if not positions:
             raise ValueError("No positions defined!")
@@ -322,6 +362,7 @@ class PlotTab(QWidget):
         )
 
     def _extract_positions_and_delays(self) -> Tuple[List[int], List[int]]:
+        """Extracts target positions (in counts) and delays (in ms) from the visual list."""
         positions_counts: List[int] = []
         delays: List[int] = []
 
@@ -343,9 +384,11 @@ class PlotTab(QWidget):
         return positions_counts, delays
 
     def set_status(self, text: str) -> None:
+        """Updates the text status of the motor operation/motion on the user panel."""
         self.status_label.setText(text or "")
 
     def set_position_inputs_enabled(self, enabled: bool) -> None:
+        """Enables or disables all position input fields (preventing changes during motion)."""
         self.add_position_button.setEnabled(enabled)
         self.repetitions_spinbox.setEnabled(enabled)
         for index in range(self.positions_layout.count()):
@@ -355,11 +398,13 @@ class PlotTab(QWidget):
                 widget.setEnabled(enabled)
 
     def set_motion_controls_enabled(self, enabled: bool) -> None:
+        """Enables or disables interaction with the motor motion start action buttons."""
         self._motion_controls_enabled = bool(enabled)
         self._update_motion_control_buttons()
         self.stop_motion_button.setEnabled(True)
 
     def set_motion_ui_enabled(self, enabled: bool) -> None:
+        """Comprehensive toggling of the interactivity state of the motion panels (inputs and actions)."""
         self.set_position_inputs_enabled(enabled)
         self.set_motion_controls_enabled(enabled)
 
@@ -368,6 +413,7 @@ class PlotTab(QWidget):
         self.plot_manager.setup_plots(self.data_widget, self.position_widget)
 
     def _handle_daq_rate_change(self):
+        """Handles the sampling rate change in the ComboBox and emits a signal to parent components."""
         self.daq_rate_changed.emit(self.current_daq_rate_key())
 
     def current_daq_rate_key(self) -> str:
@@ -376,11 +422,20 @@ class PlotTab(QWidget):
     def current_daq_rate_label(self) -> str:
         return self.daq_rate_combo.currentText()
 
+    def current_resistor_position(self) -> str:
+        return self.resistor_pos_combo.currentText()
+
+    def get_loop_mode(self) -> str:
+        return self.loop_mode_combo.currentText()
+
     def emit_current_daq_rate(self):
         self.daq_rate_changed.emit(self.current_daq_rate_key())
 
     def emit_current_reference_resistance(self):
         self.reference_resistance_changed.emit(self.reference_resistance_ohms())
+
+    def emit_current_resistor_position(self):
+        self.resistor_position_changed.emit(self.current_resistor_position())
 
     def emit_current_positions(self):
         counts, degrees, delays = self._extract_path_data()
@@ -395,6 +450,13 @@ class PlotTab(QWidget):
         return positions
 
     def _extract_path_data(self) -> Tuple[List[int], List[float], List[int]]:
+        """
+        Converts and extracts values from the motion step list into numerical arrays.
+        Returns Tuple:
+            [0] Array of positions in steps (counts for the motor).
+            [1] Array of positions in degrees (°).
+            [2] Delay for each step (ms).
+        """
         positions_counts: List[int] = []
         positions_degrees: List[float] = []
         delays_ms: List[int] = []
@@ -414,6 +476,7 @@ class PlotTab(QWidget):
         return positions_counts, positions_degrees, delays_ms
 
     def start_progress_tracking(self, cycle_time_s: float, total_cycles: int):
+        """Starts the timer and progress bar to track the completion of the motion."""
         if cycle_time_s is None or cycle_time_s <= 0 or total_cycles <= 0:
             self.stop_progress_tracking()
             return
@@ -430,6 +493,7 @@ class PlotTab(QWidget):
         self.set_progress_cycles(0)
 
     def stop_progress_tracking(self):
+        """Terminates the display of the experiment cycle progress indicator."""
         self.progress_timer.stop()
         self.progress_bar.hide()
         self.eta_label.hide()
@@ -441,6 +505,7 @@ class PlotTab(QWidget):
         self.progress_bar.setValue(0)
 
     def set_progress_cycles(self, completed_cycles: int):
+        """Updates the progress bar fill based on the number of completed repetitions."""
         if self._progress_total_cycles <= 0:
             return
         value = max(0, min(completed_cycles, self._progress_total_cycles))
@@ -458,6 +523,7 @@ class PlotTab(QWidget):
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
+        """Converts seconds into the 'Xh Ym Zs' format for better ETA readability."""
         seconds = max(0, int(round(seconds)))
         if seconds < 60:
             return f"{seconds}s"
@@ -468,6 +534,7 @@ class PlotTab(QWidget):
         return f"{hours}h {minutes:02d}m"
 
     def set_motor_initialized(self, initialized: bool):
+        """Sets the motor connection indicator in the UI to the correct graphical state."""
         self._motor_initialized = bool(initialized)
         if initialized:
             self.motor_status_indicator.setStyleSheet("background-color: #27ae60; border: 1px solid #1e8449;")
@@ -480,6 +547,7 @@ class PlotTab(QWidget):
         self._update_motion_control_buttons()
 
     def set_com_ports(self, ports):
+        """Updates the ComboBox with a list of detected hardware COM ports."""
         self.init_com_combo.clear()
         if ports:
             self.init_com_combo.addItems(ports)
@@ -496,15 +564,18 @@ class PlotTab(QWidget):
         return float(self.reference_res_spinbox.value())
 
     def _update_live_data(self, timestamp, position, resistance, humidity, temperature, voltage):
+        """Receives data from the acquisition thread and visually updates the live labels in the GUI."""
         self.live_angle_label.setText(f"Angle: {position:.2f}°")
         self.live_voltage_label.setText(f"Voltage: {voltage:.3f} V")
         if resistance >= 1e6:
-            res_str = f"{resistance/1e6:.2f} MΩ"
+            res_str = f"{resistance/1e6:.3f} MΩ"
         elif resistance >= 1e3:
-            res_str = f"{resistance/1e3:.2f} kΩ"
+            res_str = f"{resistance/1e3:.3f} kΩ"
         else:
-            res_str = f"{resistance:.1f} Ω"
+            res_str = f"{resistance:.3f} Ω"
         self.live_resistance_label.setText(f"Resistance: {res_str}")
+        self.live_temperature_label.setText(f"Temperature: {temperature:.2f}°C")
+        self.live_humidity_label.setText(f"Humidity: {humidity:.2f}%")
 
     def _update_motion_control_buttons(self):
         can_control = self._motor_initialized and self._motion_controls_enabled

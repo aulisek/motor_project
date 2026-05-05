@@ -117,6 +117,9 @@ class ADS1256:
     def ADS1256_ConfigADC(self, gain, drate):
         self.ADS1256_WaitDRDY()
         buf = [0,0,0,0,0,0,0,0]
+        #buffer disabled
+        #buf[0] = (0<<3) | (1<<2) | (0<<1)
+        #buffer enabled
         buf[0] = (0<<3) | (1<<2) | (1<<1)
         buf[1] = 0x08
         buf[2] = (0<<5) | (0<<3) | (gain<<0)

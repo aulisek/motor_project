@@ -1,3 +1,7 @@
+"""
+Data Acquisition (DAQ) Controller Module.
+Provides threaded background reading of sensors (ADC, DHT22) and motor parameters.
+"""
 from PyQt5.QtCore import QThread, pyqtSignal
 import RPi.GPIO as GPIO
 import dht22
@@ -22,6 +26,7 @@ def _parse_rate_value(name: str) -> float:
 
 
 def _format_rate_label(value: float) -> str:
+    """Format a sampling rate float into a human-readable string."""
     if value >= 1000:
         return f"{value / 1000:.1f} kSPS"
     return f"{value:.1f} SPS"
@@ -57,10 +62,17 @@ ADS1256_RATE_VALUES = {
 }
 
 class DAQController(QThread):
+    """
+    A PyQt5 QThread responsible for continuous data acquisition.
+    Communicates via pyqtSignal to update the GUI without blocking it.
+    Handles ADS1256 ADC conversions, DHT22 readings, motor position queries,
+    and CSV logging.
+    """
     data_signal = pyqtSignal(float, float, float, float, float, float)  # timestamp, position, resistance, humidity, temperature, voltage
 
     def __init__(self, motor_controller, sample_rate=10, gui_rate=10):
         super().__init__()
+        """Initialize hardware connections, shared state, and timing configs."""
         self.running = False
         self.motor_controller = motor_controller
         self.sample_rate_hz = max(1, int(sample_rate))
@@ -75,10 +87,6 @@ class DAQController(QThread):
         self.adc = ADS1256()
         if self.adc.ADS1256_init() != 0:
             raise RuntimeError("ADS1256 initialization failed.")
-        # buffer off
-        #self.adc.ADS1256_WriteReg(0, 0x00)
-        # buffer on
-        #self.adc.ADS1256_WriteReg(0, 0x00)
         self._configure_adc_rate(self._ads_rate_key)
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
         self.adc_channel = 2  # e.g., AIN0
@@ -124,6 +132,10 @@ class DAQController(QThread):
         print(f"[DAQ] Logging started → {filename}")
 
     def update_position_loop(self):
+        """
+        Dedicated loop to fetch motor position. Runs in its own thread to avoid
+        blocking the main DAQ timing loop if the motor controller responds slowly.
+        """
         while self.running:
             try:
                 new_position = self.motor_controller.get_position()
@@ -131,9 +143,9 @@ class DAQController(QThread):
                     self.position = new_position
             except Exception as e:
                 print(f"[Motor Read Error] {e}")
-            #time.sleep(0.03)  # 30 ms ≈ 33 Hz
 
     def run(self):
+        """Main thread execution block for Data Acquisition."""
         self.running = True
         self.start_time = time.perf_counter()
         self.position_thread = threading.Thread(target=self.update_position_loop, daemon=True)
@@ -200,13 +212,13 @@ class DAQController(QThread):
             self.csv_writer = None
 
     def start_logging(self):
-        """Enable CSV logging (opens file if not already open)."""
+        """Enable CSV logging (opens a new file if not already open)."""
         with self._config_lock:
             if not self.csv_writer:
                 self.init_log_file(self.experiment_metadata)
 
     def stop_logging(self):
-        """Disable CSV logging (closes file)."""
+        """Disable CSV logging (closes the active file)."""
         with self._config_lock:
             if self.log_file:
                 self.log_file.close()
@@ -214,6 +226,7 @@ class DAQController(QThread):
                 self.csv_writer = None
 
     def stop(self):
+        """Gracefully stop the DAQ loop, position thread, and close file handlers."""
         if not self.isRunning():
             return
 
@@ -230,13 +243,21 @@ class DAQController(QThread):
             self.csv_writer = None
 
     def change_sample_rate(self, rate_hz):
-        """Update the acquisition rate (Hz)."""
+        """
+        Update the acquisition rate (Hz).
+        Args:
+            rate_hz (int): Desired main loop frequency.
+        """
         with self._config_lock:
             self.sample_rate_hz = max(1, int(rate_hz))
             self._apply_timing_config()
 
     def _configure_adc_rate(self, rate_key: str):
-        """Map the requested ADS1263 rate to the closest ADS1256 configuration."""
+        """
+        Map the requested ADS1263 rate string to the closest ADS1256 configuration.
+        Args:
+            rate_key (str): The configuration key mapping (e.g., 'ADS1263_10SPS').
+        """
         target = ADS1263_SAMPLE_RATES.get(rate_key, ADS1263_SAMPLE_RATES[DEFAULT_ADS1263_RATE_KEY])["sps"]
         best_ads1256 = min(ADS1256_RATE_VALUES.items(), key=lambda item: abs(item[1] - target))[0]
         self.adc.ADS1256_ConfigADC(
@@ -245,7 +266,11 @@ class DAQController(QThread):
         )
 
     def set_ads1263_sample_rate(self, rate_key: str):
-        """Public hook to adjust sampling speed using ADS1263-style presets."""
+        """
+        Public hook to adjust sampling speed using predefined presets.
+        Args:
+            rate_key (str): Chosen preset rate key.
+        """
         if rate_key not in ADS1263_SAMPLE_RATES:
             rate_key = DEFAULT_ADS1263_RATE_KEY
         self._ads_rate_key = rate_key
@@ -258,7 +283,11 @@ class DAQController(QThread):
         self.experiment_metadata = metadata or {}
 
     def set_reference_resistance(self, value: float):
-        """Allow UI/config to adjust the voltage divider reference resistor."""
+        """
+        Update the voltage divider reference resistor value dynamically.
+        Args:
+            value (float): Resistance in Ohms.
+        """
         try:
             numeric_value = float(value)
         except (TypeError, ValueError):
@@ -269,15 +298,17 @@ class DAQController(QThread):
             self.reference_resistance = numeric_value
 
     def set_resistor_position(self, position: str):
+        """Set whether the reference resistor is on the Top (High Side) or Bottom (Low Side)."""
         with self._config_lock:
             self.resistor_position = position
 
     def cleanup(self):
-        """Stop acquisition and release GPIO resources."""
+        """Stop acquisition thread safely and release GPIO resources."""
         self.stop()
         GPIO.cleanup()
 
     def _write_metadata_header(self, metadata: dict):
+        """Format and write human-readable experiment metadata into the CSV header."""
         if not self.log_file:
             return
         lines = []

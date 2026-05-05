@@ -1,4 +1,5 @@
+wheel
 PyQt5
 nidaqmx
 pyqtgraph
-wheel
+

@@ -1,13 +1,18 @@
 from nanolib_helper import Nanolib, NanolibHelper
-import time
 import threading
 
 class MotorController:
+    """
+    Controller class for handling interactions with the Nanotec motor.
+    Wraps the Nanolib wrapper functions to execute specific motor commands
+    like initialization, movement, setting home position, and retrieving position.
+    """
+
     def __init__(self):
         self.nanolib_helper = NanolibHelper()
         self._stop_event = threading.Event()
         self.initialized = False
-        #setup nanolib
+        # Setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
 
@@ -21,16 +26,18 @@ class MotorController:
         return bus_hardware, hardware_items
     
     def initialize_motor(self, hardware_index):
-        """Complete initialization sequence."""
+        """
+        Complete initialization sequence.
+        
+        Args:
+            hardware_index (int): Index of the selected bus hardware.
+            
+        Raises:
+            ValueError: If the hardware index is out of range.
+        """
        
         # Retrieve and select bus hardware
         bus_hardware = self.get_bus_hardware()
-        '''
-        bus_hw_id = bus_hardware[3]
-        self.open_bus_hardware(bus_hw_id)
-        device_handle = self.create_and_connect_device(bus_hw_id)
-        self.stop_running_program(device_handle)
-        '''
         if hardware_index < 0 or hardware_index >= len(bus_hardware):
             raise ValueError("Invalid hardware index.")
         
@@ -41,10 +48,8 @@ class MotorController:
 
         self.device_handle = device_handle
         self.initialized = True
-        # baud rate setting
+        # Baud rate setting
         self.nanolib_helper.write_number(self.device_handle, 256000, Nanolib.OdIndex(0x202A, 0x00), 32)
-        #self.nanolib_helper.write_number(self.device_handle, 0, Nanolib.OdIndex(0x3502, 0x00), 32)
-        #self.nanolib_helper.write_number(self.device_handle, 60640020, Nanolib.OdIndex(0x3502, 0x03), 32)
         
 
     def get_bus_hardware(self):
@@ -71,6 +76,19 @@ class MotorController:
         self.nanolib_helper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
     def execute_motion(self, home_position, positions, delays, repetitions, progress_callback=None):
+        """
+        Executes a sequence of motion commands.
+        
+        Args:
+            home_position: Home position setting.
+            positions (list): A list of target positions.
+            delays (list): Delays in ms to apply after each corresponding position movement.
+            repetitions (int): Number of times the sequence is repeated.
+            progress_callback (callable, optional): Callback to update progress.
+            
+        Returns:
+            int: 0 if aborted, 1 if completed successfully.
+        """
         self._stop_event.clear()
         self.enable_voltage()
         self.switch_on()
@@ -113,16 +131,17 @@ class MotorController:
 
     def set_motion_parameters(self, max_acceleration, prof_acceleration, max_deceleration, prof_deceleration,
                                prof_velocity, end_velocity):
-        # Maximum accelaration (0x60C5) 
+        """Set motor kinematic parameters (acceleration, velocity, etc.)."""
+        # Maximum acceleration (0x60C5) 
         self.nanolib_helper.write_number(self.device_handle, max_acceleration, Nanolib.OdIndex(0x60C5, 0x00), 32) 
 
-        # Profile accelaration (0x6083)
+        # Profile acceleration (0x6083)
         self.nanolib_helper.write_number(self.device_handle, prof_acceleration, Nanolib.OdIndex(0x6083, 0x00), 32)  
 
-        # Max Deccelaration (0x60C6)
+        # Max Deceleration (0x60C6)
         self.nanolib_helper.write_number(self.device_handle, max_deceleration, Nanolib.OdIndex(0x60C6, 0x00), 32)  
 
-        # Profile Deccelaration (0x6084)
+        # Profile Deceleration (0x6084)
         self.nanolib_helper.write_number(self.device_handle, prof_deceleration, Nanolib.OdIndex(0x6084, 0x00), 32)  
 
         # 0x6081 - Profile Velocity
@@ -151,9 +170,6 @@ class MotorController:
                 self.stop_motor()
                 return False
             status_word = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            #torque_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6077, 0x00))
-            #position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-            #print(position_value, torque_value)
 
             if status_word & 0x1400 == 0x1400:
                 break
@@ -163,7 +179,6 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        #position_value = 10
         return max(0,(3600 - position_value) / 10)
 
     def stop_motor(self):
@@ -187,37 +202,35 @@ class MotorController:
         self.nanolib_helper.write_number(self.device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
 
     def close_connection(self, bus_hw_id):
-        """Stop the movement."""
+        """Close the connection to the bus hardware."""
         self.nanolib_helper.disconnect_device(self.device_handle)
         self.nanolib_helper.close_bus_hardware(bus_hw_id)
     
     def set_home_position(self):
         """Set the current position as the home position without moving the motor."""
-        # 1. Uložení aktuálního režimu řízení
+        # 1. Save current control mode
         self.nanolib_helper.write_number(self.device_handle, 6, Nanolib.OdIndex(0x6060, 0x00), 8)
         
-        # 3. Získání aktuální pozice
+        # 3. Get current position
         current_position = self.get_position()*10
         print(f"Current Position before homing: {current_position}")
 
-        # 4. Výpočet a zápis offsetu
-        desired_home_position = 3600  # Chceme, aby aktuální pozice odpovídala 3600
+        # 4. Calculate and write offset
+        desired_home_position = 3600  # We want the current position to correspond to 3600
         home_offset = 3600
         self.nanolib_helper.write_number(self.device_handle, home_offset, Nanolib.OdIndex(0x607C, 0x00), 32)
         print(f"Home offset set to: {home_offset}")
         self.nanolib_helper.write_number(self.device_handle, 0b10000, Nanolib.OdIndex(0x6040, 0x00), 16)
-        # 5. Ověření zápisu offsetu
+        # 5. Verify offset write
         read_offset = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x607C, 0x00))
         print(f"Verified home offset: {read_offset}")
         self.nanolib_helper.write_number(self.device_handle, 15, Nanolib.OdIndex(0x6040, 0x00), 16)  # Enable operation
-        # 6. Přepnutí zpět do původního režimu řízení
-        #self.nanolib_helper.write_number(self.device_handle, current_mode, Nanolib.OdIndex(0x6060, 0x00), 8)
 
         self.enable_voltage()
         self.switch_on()
         self.enable_operation()
         self.set_profile_position_mode()
-        # 7. Ověření nové polohy – měla by odpovídat 3600
+        # 7. Verify new position - should correspond to 3600
         new_position = self.get_position()
         print(f"New Actual Position after setting home: {new_position}")
 
@@ -238,4 +251,5 @@ position to be considered having been met"""
         self.nanolib_helper.write_number(self.device_handle, time_ms, Nanolib.OdIndex(0x6068, 0x00), 32)
 
     def is_initialized(self):
+        """Check if the motor controller is initialized."""
         return self.initialized

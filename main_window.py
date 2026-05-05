@@ -8,9 +8,15 @@ from tabs.plot_tab import PlotTab
 
 
 class MainWindow(QMainWindow):
-    """Top-level window that wires together the modular tab widgets."""
+    """
+    Top-level window that wires together the modular tab widgets.
+    Acts as the central orchestrator routing signals between the 
+    UI components (PlotTab, RampPreviewWidget) and the backend 
+    controllers (PlotManager, MotorController, MotionWorker).
+    """
 
     def __init__(self, motor_controller):
+        """Initializes the main window and underlying managers."""
         super().__init__()
         self.motor_controller = motor_controller
         self.plot_manager = PlotManager(self.motor_controller)
@@ -22,6 +28,7 @@ class MainWindow(QMainWindow):
         self.update_com_ports()
 
     def _init_ui(self) -> None:
+        """Configures the main layout, window properties, and tab widgets."""
         self.setWindowTitle("Motor Controller GUI")
         self.setGeometry(100, 100, 500, 300)
 
@@ -37,6 +44,7 @@ class MainWindow(QMainWindow):
         self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
 
     def _wire_signals(self) -> None:
+        """Connects PyQt signals from the UI tabs to their respective backend slots."""
         self.plot_tab.start_motion_requested.connect(self.start_motion)
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
         self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
@@ -52,6 +60,13 @@ class MainWindow(QMainWindow):
         self.plot_tab.emit_current_resistor_position()
 
     def _get_ramp_preview_motion_params(self):
+        """
+        Retrieves the acceleration, deceleration, and velocity parameters 
+        currently set in the Ramp Preview tab.
+        
+        Returns:
+            dict or None: A dictionary containing 'acc', 'dec', and 'vel', or None if invalid.
+        """
         widget = getattr(self, "ramp_preview_tab", None)
         if widget is None:
             return None
@@ -83,6 +98,7 @@ class MainWindow(QMainWindow):
         loop_mode,
         resistor_position,
     ):
+        """Aggregates all experiment parameters to be saved in the CSV log header."""
         positions_summary = []
         for idx, count in enumerate(plan.positions):
             delay = plan.delays[idx] if idx < len(plan.delays) else 0
@@ -107,6 +123,10 @@ class MainWindow(QMainWindow):
         }
 
     def start_motion(self):
+        """
+        Prepares and starts the motor motion sequence in a background thread.
+        Also handles configuring the DAQ logging session with the correct metadata.
+        """
         try:
             plan = self.plot_tab.build_motion_plan()
         except ValueError as exc:
@@ -194,9 +214,11 @@ class MainWindow(QMainWindow):
             self.plot_tab.stop_progress_tracking()
 
     def _set_motion_ui_enabled(self, enabled: bool) -> None:
+        """Enables or disables UI elements during active motion."""
         self.plot_tab.set_motion_ui_enabled(enabled)
 
     def stop_motion(self):
+        """Sends an abort signal to the motor controller and halts DAQ logging."""
         self.plot_tab.set_status("Stop requested...")
         self.motor_controller.stop_movement()
         self.plot_tab.stop_progress_tracking()
@@ -204,15 +226,18 @@ class MainWindow(QMainWindow):
         self.plot_manager.stop_acquisition()
 
     def _handle_motion_finished(self):
+        """Cleans up the UI state and DAQ logging once the motion sequence ends."""
         self._set_motion_ui_enabled(True)
         self.plot_tab.stop_progress_tracking()
         # Stop DAQ logging after motion completes
         self.plot_manager.stop_acquisition()
 
     def _handle_cycle_progress(self, completed_cycles: int):
+        """Updates the progress bar in the UI based on completed motion cycles."""
         self.plot_tab.set_progress_cycles(completed_cycles)
 
     def update_com_ports(self):
+        """Polls the Nanolib wrapper for available hardware COM ports."""
         try:
             bus_hw, hardware_items = self.motor_controller.select_bus_hardware()
             print(f"Bus hardware IDs: {bus_hw}")
@@ -223,6 +248,7 @@ class MainWindow(QMainWindow):
             self.plot_tab.set_com_ports([])
 
     def select_com_port(self, selected_index: int):
+        """Attempts to initialize the motor on the selected hardware index."""
         try:
             if selected_index is None or selected_index < 0:
                 raise Exception("No hardware selected.")
@@ -235,5 +261,6 @@ class MainWindow(QMainWindow):
             self.plot_tab.set_motor_initialized(self.motor_controller.is_initialized())
 
     def closeEvent(self, event):
+        """Ensures hardware and DAQ threads are cleanly shut down upon exiting the application."""
         self.plot_manager.shutdown()
         super().closeEvent(event)

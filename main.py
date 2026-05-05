@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 # Author: Vladislav Aulich
 
+"""
+Entry point for the Motor Controller GUI application.
+Initializes the motor controller, main window, and starts the PyQt5 event loop.
+"""
+
 import sys
 from PyQt5.QtWidgets import QApplication
 from motor_controller import MotorController

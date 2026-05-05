@@ -6,7 +6,11 @@ from data_controller import DAQController
 
 
 class PlotManager:
-    """Encapsulates data acquisition hooks and PyQtGraph setup."""
+    """
+    Encapsulates data acquisition hooks and PyQtGraph setup.
+    Handles safely transferring data from the background DAQ thread 
+    into the graphical circular buffers for live plotting.
+    """
 
     def __init__(self, motor_controller):
         self.motor_controller = motor_controller
@@ -23,6 +27,13 @@ class PlotManager:
         self._plot_dirty = False
 
     def setup_plots(self, data_widget, position_widget):
+        """
+        Initializes the graphical parameters (labels, colors, grids) for the PyQtGraph plots.
+        
+        Args:
+            data_widget (pg.PlotWidget): The widget used for visualizing electrical resistance.
+            position_widget (pg.PlotWidget): The widget used for visualizing the motor's angle.
+        """
         self.data_plot = data_widget
         self.data_plot.setTitle("Electrode Data")
         self.data_plot.setLabel("left", "Resistance (Ω)")
@@ -48,10 +59,23 @@ class PlotManager:
         )
 
     def update_plot(self):
+        """Flushes the data deque buffers into the PyQtGraph curves."""
         self.data_curve.setData(self.resistance_buffer)
         self.position_curve.setData(self.position_buffer)
 
     def handle_new_data(self, timestamp, position, resistance, humidity, temperature, voltage):
+        """
+        Slot connected to the DAQController's data_signal. 
+        Appends new readings to the internal UI buffers.
+        
+        Args:
+            timestamp (float): The Unix timestamp of the reading.
+            position (float): The current motor angle.
+            resistance (float): The calculated resistance in Ohms.
+            humidity (float): DHT22 humidity reading.
+            temperature (float): DHT22 temperature reading.
+            voltage (float): Raw ADC voltage reading.
+        """
         if not self._plotting_enabled:
             return
         self.resistance_buffer.append(resistance)
@@ -61,6 +85,10 @@ class PlotManager:
             self._plot_timer.start()
 
     def _flush_plot_data(self):
+        """
+        Timer callback that prevents overwhelming the GUI thread with update requests.
+        Draws the plot strictly at the predefined timer interval.
+        """
         if not self._plot_dirty:
             self._plot_timer.stop()
             return
@@ -79,6 +107,7 @@ class PlotManager:
             self.position_curve.setData([])
 
     def start_acquisition(self):
+        """Starts the DAQ thread and begins writing data to the CSV log."""
         if not self.daq_controller.isRunning():
             self.daq_controller.start()
         self.daq_controller.start_logging()
@@ -90,6 +119,7 @@ class PlotManager:
             self.daq_controller.start()
 
     def set_experiment_metadata(self, metadata: dict):
+        """Passes UI metadata to the DAQ thread to inject into the CSV header."""
         self.daq_controller.set_experiment_metadata(metadata or {})
 
     def set_reference_resistance(self, value: float):
@@ -97,14 +127,17 @@ class PlotManager:
         self.daq_controller.set_reference_resistance(value)
 
     def set_resistor_position(self, position: str):
+        """Forward the user-selected resistor position to the DAQ thread."""
         self.daq_controller.set_resistor_position(position)
 
     def stop_acquisition(self):
+        """Halts the CSV logging, stops UI plotting, and clears the visual graphs."""
         self.daq_controller.stop_logging()
         self._plotting_enabled = False
         self.reset_plot_data()
 
     def set_daq_sample_rate(self, rate_key: str):
+        """Updates the ADC sampling frequency based on the user's dropdown selection."""
         self.daq_controller.set_ads1263_sample_rate(rate_key)
 
     def shutdown(self):

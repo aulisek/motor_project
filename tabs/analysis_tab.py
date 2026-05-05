@@ -3,8 +3,8 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QFileDial
 
 class AnalysisTab(QWidget):
     """
-    Tab pro budoucí analýzu naměřených dat.
-    Zatím obsahuje pouze prvek pro nahrání souboru.
+    Tab for future analysis of measured data.
+    Currently contains only a file load element.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -13,17 +13,17 @@ class AnalysisTab(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         
-        self.load_button = QPushButton("Nahrát soubor k analýze...")
+        self.load_button = QPushButton("Load file for analysis...")
         self.load_button.clicked.connect(self._load_file)
         layout.addWidget(self.load_button)
 
-        self.placeholder_label = QLabel("Zde se v budoucnu zobrazí analýza a grafy...")
+        self.placeholder_label = QLabel("Analysis and graphs will be displayed here in the future...")
         self.placeholder_label.setStyleSheet("color: gray; font-style: italic;")
         layout.addWidget(self.placeholder_label)
 
         layout.addStretch()
 
     def _load_file(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "Vybrat CSV soubor", "", "CSV Files (*.csv);;All Files (*)")
+        filename, _ = QFileDialog.getOpenFileName(self, "Select CSV file", "", "CSV Files (*.csv);;All Files (*)")
         if filename:
-            self.placeholder_label.setText(f"Vybrán soubor:\n{filename}\n\n(Zde proběhne analýza)")
+            self.placeholder_label.setText(f"Selected file:\n{filename}\n\n(Analysis will take place here)")

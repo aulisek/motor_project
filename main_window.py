@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         """Connects PyQt signals from the UI tabs to their respective backend slots."""
         self.plot_tab.start_motion_requested.connect(self.start_motion)
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
-        self.plot_tab.set_home_requested.connect(self.motor_controller.set_home_position)
+        self.plot_tab.go_home_requested.connect(self.motor_controller.go_to_home_position)
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
         self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)

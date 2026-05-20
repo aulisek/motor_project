@@ -210,35 +210,23 @@ class MotorController:
         self.nanolib_helper.disconnect_device(self.device_handle)
         self.nanolib_helper.close_bus_hardware(bus_hw_id)
     
-    def set_home_position(self):
-        """Set the current position as the home position without moving the motor."""
-        # 1. Save current control mode
-        self.nanolib_helper.write_number(self.device_handle, 6, Nanolib.OdIndex(0x6060, 0x00), 8)
-        
-        # 3. Get current position
-        current_position = self.get_position()*10
-        logger.info(f"Current Position before homing: {current_position}")
-
-        # 4. Calculate and write offset
-        desired_home_position = const.DEFAULT_HOME_POSITION
-        home_offset = const.DEFAULT_HOME_POSITION
-        self.nanolib_helper.write_number(self.device_handle, home_offset, Nanolib.OdIndex(0x607C, 0x00), 32)
-        logger.info(f"Home offset set to: {home_offset}")
-        self.nanolib_helper.write_number(self.device_handle, 0b10000, Nanolib.OdIndex(0x6040, 0x00), 16)
-        # 5. Verify offset write
-        read_offset = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x607C, 0x00))
-        logger.info(f"Verified home offset: {read_offset}")
-        self.nanolib_helper.write_number(self.device_handle, 15, Nanolib.OdIndex(0x6040, 0x00), 16)  # Enable operation
-
-        self.enable_voltage()
-        self.switch_on()
-        self.enable_operation()
-        self.set_profile_position_mode()
-        # 7. Verify new position - should correspond to 3600
-        new_position = self.get_position()
-        logger.info(f"New Actual Position after setting home: {new_position}")
-
-        self.stop_motor()
+    def go_to_home_position(self):
+        """Move the motor to the absolute default home position (without changing the reference)."""
+        def _move_task():
+            self._stop_event.clear()
+            logger.info(f"Moving to absolute home position: {const.DEFAULT_HOME_POSITION}")
+            self.enable_voltage()
+            self.switch_on()
+            self.enable_operation()
+            self.set_profile_position_mode()
+            
+            self.move_to_position(const.DEFAULT_HOME_POSITION)
+            self.stop_motor()
+            
+            new_position = self.get_position()
+            logger.info(f"Motor reached home position. Actual: {new_position}")
+            
+        threading.Thread(target=_move_task, daemon=True).start()
 
     def stop_movement(self):
         """Stop the movement."""

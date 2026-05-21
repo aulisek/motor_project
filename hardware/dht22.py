@@ -1,6 +1,9 @@
 import time
 import RPi
 import RPi.GPIO
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DHT22Result:
@@ -37,8 +40,8 @@ class DHT22:
         # send initial high
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
-        # pull down to low
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.018) # Start signal >= 18ms to reliably wake up all DHT variants
+        # pull down to low (2ms is standard for DHT22, 18ms can freeze some clones)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) 
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -51,6 +54,7 @@ class DHT22:
 
         # if bit count mismatch, return error (4 byte data + 1 byte checksum)
         if len(pull_up_lengths) != 40:
+            logger.info(f"[DHT22] Read failed: Missing data. Expected 40 bits, got {len(pull_up_lengths)}")
             return DHT22Result(DHT22Result.ERR_MISSING_DATA, 0, 0)
 
         # calculate bits from lengths of the pull up periods
@@ -62,6 +66,7 @@ class DHT22:
         # calculate checksum and check
         checksum = self.__calculate_checksum(the_bytes)
         if the_bytes[4] != checksum:
+            logger.info(f"[DHT22] Read failed: CRC error. Expected {checksum}, got {the_bytes[4]}")
             return DHT22Result(DHT22Result.ERR_CRC, 0, 0)
 
         # ok, we have valid data
@@ -90,13 +95,19 @@ class DHT22:
         unchanged_count = 0
 
         # this is used to determine where is the end of the data
-        max_unchanged_count = 10000
+        max_unchanged_count = 30000
 
         last = -1
         data = []
+        
+        # Localize functions to drastically speed up the Python loop
+        append = data.append
+        input_pin = RPi.GPIO.input
+        pin = self.__pin
+
         while True:
-            current = RPi.GPIO.input(self.__pin)
-            data.append(current)
+            current = input_pin(pin)
+            append(current)
             if last != current:
                 unchanged_count = 0
                 last = current

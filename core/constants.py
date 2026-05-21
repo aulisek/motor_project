@@ -2,6 +2,7 @@
 Application-wide constants and default configuration values.
 All magic numbers should be centralized here.
 """
+import os
 
 # --- Hardware & ADC Constants ---
 ADC_VOLTAGE = 5.084
@@ -20,6 +21,6 @@ DEFAULT_REFERENCE_RESISTANCE = 110000.0
 DEFAULT_RESISTOR_POSITION = "Top (High Side)"
 
 # --- Data Logging & UI ---
-CSV_OUTPUT_FOLDER = "measurements"
+CSV_OUTPUT_FOLDER = os.path.expanduser("~/Documents/measurements")
 PLOT_BUFFER_SIZE = 500
 PLOT_UPDATE_INTERVAL_MS = 50

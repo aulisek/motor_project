@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QThread, QTimer
 from PyQt5.QtWidgets import QMainWindow, QTabWidget, QMessageBox
 import logging
 
@@ -36,7 +36,7 @@ class MainWindow(QMainWindow):
         """Configures the main layout, window properties, and tab widgets."""
         self.setWindowTitle("Motor Controller GUI")
         self.setGeometry(100, 100, 500, 300)
-        self.showMaximized()
+        QTimer.singleShot(0, self.showMaximized)
 
         self.tab_widget = QTabWidget()
 

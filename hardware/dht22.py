@@ -40,8 +40,8 @@ class DHT22:
         # send initial high
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
-        # pull down to low (3ms is the sweet spot for strict DHT22/AM2302 clones)
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.003) 
+        # pull down to low (exactly 2ms for DHT22 using precise busy-wait)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) 
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -93,7 +93,13 @@ class DHT22:
 
     def __send_and_sleep(self, output, sleep):
         RPi.GPIO.output(self.__pin, output)
-        time.sleep(sleep)
+        if sleep > 0.01:
+            time.sleep(sleep)  # Safe to yield for long times
+        else:
+            # Busy-wait for precise microsecond timing to prevent OS scheduler from oversleeping
+            target = time.perf_counter() + sleep
+            while time.perf_counter() < target:
+                pass
 
     def __collect_input(self):
         # collect the data while unchanged found

@@ -13,7 +13,7 @@ DEFAULT_DHT_PIN = 4
 COUNTS_PER_REV = 3600.0
 DEFAULT_HOME_POSITION = 3600
 DEFAULT_KINEMATICS_VALUE = 300
-ABSOLUTE_ENCODER_HOME = 4294963690  # Hardcoded 0° position for absolute encoder
+ABSOLUTE_ENCODER_HOME = 4094963690  # Hardcoded 0° position for absolute encoder
 
 # --- Measurement & Circuit Constants ---
 DEFAULT_REFERENCE_RESISTANCE = 110000.0

@@ -1,6 +1,8 @@
 from core.nanolib_helper import Nanolib, NanolibHelper
 import threading
 import logging
+import json
+import os
 import core.constants as const
 
 logger = logging.getLogger(__name__)
@@ -16,9 +18,36 @@ class MotorController:
         self.nanolib_helper = NanolibHelper()
         self._stop_event = threading.Event()
         self.initialized = False
+        self.config_file = "motor_config.json"
+        self.position_offset = self._load_offset()
         # Setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
+
+    def _load_offset(self):
+        """Loads the persistent motor position offset from config file."""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, "r") as f:
+                    config = json.load(f)
+                    return config.get("position_offset", 0)
+        except Exception as e:
+            logger.warning(f"Failed to load config: {e}")
+        return 0
+
+    def set_current_position_as_home(self):
+        """Sets the current physical position as the absolute default home (0 degrees) and saves it."""
+        if not self.initialized:
+            raise Exception("Motor is not initialized.")
+        try:
+            actual_pos = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
+            self.position_offset = actual_pos - const.DEFAULT_HOME_POSITION
+            with open(self.config_file, "w") as f:
+                json.dump({"position_offset": self.position_offset}, f)
+            logger.info(f"New home set. Offset saved: {self.position_offset}")
+        except Exception as e:
+            logger.error(f"Failed to set current position as home: {e}")
+            raise
 
     def select_bus_hardware(self):
         """Retrieve and select bus hardware."""
@@ -167,7 +196,7 @@ class MotorController:
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
-        target_position = int(position)
+        target_position = int(position + self.position_offset)
         self.nanolib_helper.write_number(self.device_handle, target_position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
@@ -184,7 +213,8 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        return max(0, (const.DEFAULT_HOME_POSITION - position_value) / 10)
+        adjusted_position = position_value - self.position_offset
+        return max(0, (const.DEFAULT_HOME_POSITION - adjusted_position) / 10)
 
     def stop_motor(self):
         """Stop the movement."""

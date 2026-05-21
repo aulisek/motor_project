@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
         self.plot_tab.start_motion_requested.connect(self.start_motion)
         self.plot_tab.stop_motion_requested.connect(self.stop_motion)
         self.plot_tab.go_home_requested.connect(self.motor_controller.go_to_home_position)
+ad        self.plot_tab.set_home_requested.connect(self._handle_set_home)
         self.plot_tab.daq_rate_changed.connect(self.plot_manager.set_daq_sample_rate)
         self.plot_tab.positions_changed.connect(self.ramp_preview_tab.set_motion_positions)
         self.plot_tab.refresh_ports_requested.connect(self.update_com_ports)
@@ -232,6 +233,14 @@ class MainWindow(QMainWindow):
         self.plot_tab.stop_progress_tracking()
         # If user manually stops motion, shut down DAQ immediately
         self.plot_manager.stop_acquisition()
+
+    def _handle_set_home(self):
+        """Handles the request to save the current physical position as 0 degrees."""
+        try:
+            self.motor_controller.set_current_position_as_home()
+            QMessageBox.information(self, "Success", "Current position set and saved as Home (0°).")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Failed to set home: {exc}")
 
     def _handle_motion_finished(self):
         """Cleans up the UI state and DAQ logging once the motion sequence ends."""

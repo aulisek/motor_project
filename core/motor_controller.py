@@ -30,6 +30,7 @@ class MotorController:
             raise Exception("Motor is not initialized.")
         try:
             actual_pos = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
+            actual_pos &= 0xFFFFFFFF  # Normalize to 32-bit unsigned
             self.current_absolute_home = actual_pos
             logger.info(f"New home set. Absolute home in memory: {self.current_absolute_home}")
         except Exception as e:
@@ -193,6 +194,12 @@ class MotorController:
         """Start the movement and waiting until the movement is done."""
         # Map internal 'position' (counts, where 3600 = 0 deg) directly to absolute physical home
         target_position = int(position - const.DEFAULT_HOME_POSITION + self.current_absolute_home)
+        
+        # Convert to signed 32-bit for Nanolib (Target Position 0x607A is Integer32)
+        target_position &= 0xFFFFFFFF
+        if target_position > 0x7FFFFFFF:
+            target_position -= 0x100000000
+            
         self.nanolib_helper.write_number(self.device_handle, target_position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
@@ -209,8 +216,14 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
+        position_value &= 0xFFFFFFFF  # Normalize to 32-bit unsigned to prevent Python signed interpretation issues
+        
         # Calculate angle exactly from the absolute home anchor
-        return (self.current_absolute_home - position_value) / 10.0
+        diff = (self.current_absolute_home - position_value) & 0xFFFFFFFF
+        if diff > 0x7FFFFFFF:
+            diff -= 0x100000000
+            
+        return diff / 10.0
 
     def stop_motor(self):
         """Stop the movement."""

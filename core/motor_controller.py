@@ -16,6 +16,7 @@ class MotorController:
         self.nanolib_helper = NanolibHelper()
         self._stop_event = threading.Event()
         self.initialized = False
+        self.position_offset = 0
         # Setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
@@ -54,6 +55,14 @@ class MotorController:
         self.initialized = True
         # Baud rate setting
         self.nanolib_helper.write_number(self.device_handle, 256000, Nanolib.OdIndex(0x202A, 0x00), 32)
+        
+        # Nastavení softwarového offsetu tak, aby aktuální pozice odpovídala DEFAULT_HOME_POSITION
+        try:
+            actual_pos = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
+            self.position_offset = actual_pos - const.DEFAULT_HOME_POSITION
+            logger.info(f"Initial motor position: {actual_pos}, calculated offset: {self.position_offset}")
+        except Exception as e:
+            logger.warning(f"Could not read initial position: {e}")
         
 
     def get_bus_hardware(self):
@@ -167,7 +176,8 @@ class MotorController:
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
-        self.nanolib_helper.write_number(self.device_handle, position, Nanolib.OdIndex(0x607A, 0x00), 32)
+        target_position = int(position + self.position_offset)
+        self.nanolib_helper.write_number(self.device_handle, target_position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
             if self._stop_event.is_set():
@@ -183,7 +193,8 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        return max(0,(const.DEFAULT_HOME_POSITION - position_value) / 10)
+        adjusted_position = position_value - self.position_offset
+        return max(0, (const.DEFAULT_HOME_POSITION - adjusted_position) / 10)
 
     def stop_motor(self):
         """Stop the movement."""

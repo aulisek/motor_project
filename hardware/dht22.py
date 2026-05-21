@@ -40,11 +40,11 @@ class DHT22:
         # send initial high
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
-        # pull down to low (exactly 2ms for DHT22 using precise busy-wait)
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) 
+        # pull down to low (18ms is universally safer for most clones, using precise busy-wait)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.018) 
 
-        # change to input using pull up
-        RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
+        # Switch to input as fast as possible. Hardware 4.7k resistor handles the pull-up!
+        RPi.GPIO.setup(self.__pin, RPi.GPIO.IN)
 
         # collect data into an array
         data = self.__collect_input()
@@ -86,14 +86,17 @@ class DHT22:
         #humidity = the_bytes[0] + float(the_bytes[1]) / 10
         
         # https://www.souichi.club/raspberrypi/temperature-and-humidity02/
-        temperature = ((the_bytes[2]*256) + the_bytes[3]) / 10
-        humidity = ((the_bytes[0]*256) + the_bytes[1]) / 10
+        temperature = (((the_bytes[2] & 0x7F) * 256) + the_bytes[3]) / 10.0
+        if the_bytes[2] & 0x80:  # If the sign bit is set, temperature is negative
+            temperature = -temperature
+            
+        humidity = ((the_bytes[0]*256) + the_bytes[1]) / 10.0
 
         return DHT22Result(DHT22Result.ERR_NO_ERROR, temperature, humidity)
 
     def __send_and_sleep(self, output, sleep):
         RPi.GPIO.output(self.__pin, output)
-        if sleep > 0.01:
+        if sleep > 0.025:
             time.sleep(sleep)  # Safe to yield for long times
         else:
             # Busy-wait for precise microsecond timing to prevent OS scheduler from oversleeping

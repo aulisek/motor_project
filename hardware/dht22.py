@@ -38,7 +38,7 @@ class DHT22:
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
         # pull down to low
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) # Start signal > 1ms for DHT22 (2ms used)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.018) # Start signal >= 18ms to reliably wake up all DHT variants
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -90,7 +90,7 @@ class DHT22:
         unchanged_count = 0
 
         # this is used to determine where is the end of the data
-        max_unchanged_count = 500
+        max_unchanged_count = 10000
 
         last = -1
         data = []

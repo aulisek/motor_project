@@ -40,8 +40,8 @@ class DHT22:
         # send initial high
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
-        # pull down to low (2ms is standard for DHT22, 18ms can freeze some clones)
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) 
+        # pull down to low (18ms is universally safer for most clones and DHT11/22)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.018) 
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -94,8 +94,8 @@ class DHT22:
         # collect the data while unchanged found
         unchanged_count = 0
 
-        # this is used to determine where is the end of the data
-        max_unchanged_count = 30000
+        # massive timeout to prevent fast RPis from giving up before the sensor replies
+        max_unchanged_count = 500000
 
         last = -1
         data = []

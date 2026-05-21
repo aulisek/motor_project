@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         """Configures the main layout, window properties, and tab widgets."""
         self.setWindowTitle("Motor Controller GUI")
         self.setGeometry(100, 100, 500, 300)
+        self.showMaximized()
 
         self.tab_widget = QTabWidget()
 

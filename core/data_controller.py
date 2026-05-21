@@ -4,7 +4,11 @@ Provides threaded background reading of sensors (ADC, DHT22) and motor parameter
 """
 from PyQt5.QtCore import QThread, pyqtSignal
 import RPi.GPIO as GPIO
-import hardware.dht22 as dht22
+
+# Nové importy pro senzor DHT22
+import board
+import adafruit_dht
+
 import time
 import csv
 import datetime
@@ -13,7 +17,6 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
-
 
 from hardware.ADS1256 import ADS1256, ADS1256_GAIN_E, ADS1256_DRATE_E
 import core.constants as const
@@ -78,9 +81,18 @@ class DAQController(QThread):
         self.adc.ADS1256_SetMode(0)  # 0 = single-ended, 1 = differential
         self.adc_channel = const.DEFAULT_ADC_CHANNEL
 
-        # === Init DHT22 ===
+        # === Init DHT22 (Nová implementace Adafruit) ===
         self.dht_pin = const.DEFAULT_DHT_PIN
-        self.dht_instance = dht22.DHT22(pin=self.dht_pin)
+        
+        try:
+            # Dynamický převod čísla z konstant (např. 5) na objekt (board.D5)
+            dht_board_pin = getattr(board, f"D{self.dht_pin}")
+            # use_pulseio=False je klíčové pro stabilitu na Raspberry Pi 5
+            self.dht_instance = adafruit_dht.DHT22(dht_board_pin, use_pulseio=False)
+        except AttributeError:
+            logger.error(f"[DAQ] Neplatný pin pro DHT22: D{self.dht_pin}")
+            self.dht_instance = None
+            
         self.humidity = 0.0
         self.temperature = 0.0
 
@@ -160,11 +172,9 @@ class DAQController(QThread):
                 reference = max(0.0001, float(reference_res))
                 if "Top" in res_pos:
                     # Unknown is Top (High Side), Reference is Bottom (Low Side). Measuring across Reference.
-                    # R_unk = R_ref * (Vin - Vout) / Vout
                     resistance = ((const.ADC_VOLTAGE - voltage) / voltage) * reference
                 else:
                     # Unknown is Bottom (Low Side), Reference is Top (High Side). Measuring across Unknown.
-                    # R_unk = R_ref * Vout / (Vin - Vout)
                     resistance = (reference * voltage) / (const.ADC_VOLTAGE - voltage)
             except (ZeroDivisionError, ValueError):
                 resistance = 0.0
@@ -176,12 +186,20 @@ class DAQController(QThread):
             else:
                 position = self.position
 
-            # === Read DHT22 ===
-            if self.iteration_count % dht_interval == 0:
-                result = self.dht_instance.read()
-                if result.is_valid():
-                    self.humidity = result.humidity
-                    self.temperature = result.temperature
+            # === Read DHT22 (Nová implementace Adafruit) ===
+            if self.iteration_count % dht_interval == 0 and self.dht_instance is not None:
+                try:
+                    t = self.dht_instance.temperature
+                    h = self.dht_instance.humidity
+                    
+                    if t is not None and h is not None:
+                        self.temperature = t
+                        self.humidity = h
+                except RuntimeError:
+                    # Běžný výpadek senzoru (např. kontrolní součet selhal) - ignorujeme, GUI ukáže poslední známou hodnotu
+                    pass
+                except Exception as e:
+                    logger.error(f"[DHT22 Error] {e}")
 
             # === Emit GUI signal ===
             if self.iteration_count % gui_interval == 0:
@@ -230,23 +248,22 @@ class DAQController(QThread):
             self.log_file.close()
             self.log_file = None
             self.csv_writer = None
+            
+        # DŮLEŽITÉ: Uvolnění senzoru při vypnutí, aby neblokoval pin pro další spuštění
+        if getattr(self, 'dht_instance', None):
+            try:
+                self.dht_instance.exit()
+            except Exception:
+                pass
 
     def change_sample_rate(self, rate_hz):
-        """
-        Update the acquisition rate (Hz).
-        Args:
-            rate_hz (int): Desired main loop frequency.
-        """
+        """Update the acquisition rate (Hz)."""
         with self._config_lock:
             self.sample_rate_hz = max(1, int(rate_hz))
             self._apply_timing_config()
 
     def _configure_adc_rate(self, rate_key: str):
-        """
-        Configure the ADS1256 sample rate based on the requested rate key.
-        Args:
-            rate_key (str): The configuration key mapping (e.g., 'ADS1256_10SPS').
-        """
+        """Configure the ADS1256 sample rate based on the requested rate key."""
         if rate_key not in ADS1256_SAMPLE_RATES:
             rate_key = DEFAULT_ADS1256_RATE_KEY
             
@@ -256,11 +273,7 @@ class DAQController(QThread):
         )
 
     def set_ads1256_sample_rate(self, rate_key: str):
-        """
-        Public hook to adjust sampling speed using predefined presets.
-        Args:
-            rate_key (str): Chosen preset rate key.
-        """
+        """Public hook to adjust sampling speed using predefined presets."""
         if rate_key not in ADS1256_SAMPLE_RATES:
             rate_key = DEFAULT_ADS1256_RATE_KEY
         self._ads_rate_key = rate_key
@@ -273,11 +286,7 @@ class DAQController(QThread):
         self.experiment_metadata = metadata or {}
 
     def set_reference_resistance(self, value: float):
-        """
-        Update the voltage divider reference resistor value dynamically.
-        Args:
-            value (float): Resistance in Ohms.
-        """
+        """Update the voltage divider reference resistor value dynamically."""
         try:
             numeric_value = float(value)
         except (TypeError, ValueError):
@@ -318,6 +327,7 @@ class DAQController(QThread):
         daq_label = metadata.get("daq_rate_label")
         if daq_label:
             lines.append(f"DAQ rate: {daq_label} (key: {metadata.get('daq_rate_key', '')})")
+        # ... zbytek vašeho formátování metadat zůstává beze změny ...
         repetitions = metadata.get("repetitions")
         if repetitions:
             lines.append(f"Repetitions: {repetitions}")

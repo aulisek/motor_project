@@ -7,7 +7,7 @@ All magic numbers should be centralized here.
 ADC_VOLTAGE = 5.084
 ADC_MAX_VALUE = 0x7FFFFF
 DEFAULT_ADC_CHANNEL = 2
-DEFAULT_DHT_PIN = 4
+DEFAULT_DHT_PIN = 5
 
 # --- Motor & Motion Constants ---
 COUNTS_PER_REV = 3600.0

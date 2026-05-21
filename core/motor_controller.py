@@ -17,11 +17,9 @@ class MotorController:
         self._stop_event = threading.Event()
         self.initialized = False
         
-        # Nastavení offsetu přímo v kódu
-        # Pokud znáte svou 0° pozici natvrdo (např. 4294963690), můžete ji zadat zde:
-        # self.position_offset = 4294963690 - const.DEFAULT_HOME_POSITION
-        self.position_offset = 0
-        self._needs_auto_home = True
+        # Setting the offset for the absolute encoder from constants
+        self.position_offset = const.ABSOLUTE_ENCODER_HOME - const.DEFAULT_HOME_POSITION
+        self._needs_auto_home = False  # Disables auto-calibration at startup since we know the absolute position
         # Setup nanolib
         self.nanolib_helper.setup()
         self.nanolib_helper.set_logging_level(Nanolib.LogLevel_Off)
@@ -73,7 +71,7 @@ class MotorController:
         # Baud rate setting
         self.nanolib_helper.write_number(self.device_handle, 256000, Nanolib.OdIndex(0x202A, 0x00), 32)
         
-        # Pokud aplikace startuje poprvé (nemá offset), zkalibruje se automaticky
+        # If the application starts for the first time (no offset), it calibrates automatically
         if self._needs_auto_home:
             logger.info("No saved offset found. Auto-calibrating current position as Home (0°).")
             try:

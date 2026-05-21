@@ -40,8 +40,8 @@ class DHT22:
         # send initial high
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
-        # pull down to low (18ms is universally safer for most clones and DHT11/22)
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.018) 
+        # pull down to low (3ms is the sweet spot for strict DHT22/AM2302 clones)
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.003) 
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -54,7 +54,12 @@ class DHT22:
 
         # if bit count mismatch, return error (4 byte data + 1 byte checksum)
         if len(pull_up_lengths) != 40:
-            logger.info(f"[DHT22] Read failed: Missing data. Expected 40 bits, got {len(pull_up_lengths)}")
+            if len(data) > 0:
+                stuck_state = "HIGH (1)" if data[0] == 1 else "LOW (0)"
+            else:
+                stuck_state = "UNKNOWN"
+                
+            logger.info(f"[DHT22] Read failed: Expected 40 bits, got {len(pull_up_lengths)}. Line seems stuck {stuck_state}. Collected {len(data)} samples.")
             return DHT22Result(DHT22Result.ERR_MISSING_DATA, 0, 0)
 
         # calculate bits from lengths of the pull up periods

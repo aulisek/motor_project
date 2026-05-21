@@ -211,7 +211,7 @@ class MotorController:
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
         adjusted_position = position_value - self.position_offset
-        return max(0, (const.DEFAULT_HOME_POSITION - adjusted_position) / 10)
+        return (const.DEFAULT_HOME_POSITION - adjusted_position) / 10.0
 
     def stop_motor(self):
         """Stop the movement."""

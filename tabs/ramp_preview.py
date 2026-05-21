@@ -363,12 +363,12 @@ class RampPreviewWidget(QWidget):
     @staticmethod
     def counts_to_degrees(counts: float) -> float:
         degrees = (COUNTS_PER_REV - counts) / 10.0
-        return max(0.0, min(360.0, degrees))
+        return degrees
 
     @staticmethod
     def counts_to_degrees_array(counts_array: np.ndarray) -> np.ndarray:
         degrees = (COUNTS_PER_REV - counts_array) / 10.0
-        return np.clip(degrees, 0.0, 360.0)
+        return degrees
 
     @staticmethod
     def degrees_to_counts(degrees: float) -> float:

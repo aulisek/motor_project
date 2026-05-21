@@ -1,5 +1,6 @@
 import time
 import RPi
+import RPi.GPIO
 
 
 class DHT22Result:
@@ -37,9 +38,7 @@ class DHT22:
         self.__send_and_sleep(RPi.GPIO.HIGH, 0.05)
 
         # pull down to low
-        # self.__send_and_sleep(RPi.GPIO.LOW, 0.02)
-        # see https://www.souichi.club/raspberrypi/temperature-and-humidity02/
-        self.__send_and_sleep(RPi.GPIO.LOW, 0.0008) 
+        self.__send_and_sleep(RPi.GPIO.LOW, 0.002) # Start signal > 1ms for DHT22 (2ms used)
 
         # change to input using pull up
         RPi.GPIO.setup(self.__pin, RPi.GPIO.IN, RPi.GPIO.PUD_UP)
@@ -91,7 +90,7 @@ class DHT22:
         unchanged_count = 0
 
         # this is used to determine where is the end of the data
-        max_unchanged_count = 100
+        max_unchanged_count = 500
 
         last = -1
         data = []

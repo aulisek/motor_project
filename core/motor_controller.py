@@ -17,8 +17,8 @@ class MotorController:
         self._stop_event = threading.Event()
         self.initialized = False
         
-        # Setting the offset for the absolute encoder from constants
-        self.position_offset = const.ABSOLUTE_ENCODER_HOME - const.DEFAULT_HOME_POSITION
+        # The physical absolute encoder position that represents 0 degrees
+        self.current_absolute_home = const.ABSOLUTE_ENCODER_HOME
         self._needs_auto_home = False  # Disables auto-calibration at startup since we know the absolute position
         # Setup nanolib
         self.nanolib_helper.setup()
@@ -30,8 +30,8 @@ class MotorController:
             raise Exception("Motor is not initialized.")
         try:
             actual_pos = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-            self.position_offset = actual_pos - const.DEFAULT_HOME_POSITION
-            logger.info(f"New home set. Offset in memory: {self.position_offset}")
+            self.current_absolute_home = actual_pos
+            logger.info(f"New home set. Absolute home in memory: {self.current_absolute_home}")
         except Exception as e:
             logger.error(f"Failed to set current position as home: {e}")
             raise
@@ -191,7 +191,8 @@ class MotorController:
 
     def move_to_position(self, position):
         """Start the movement and waiting until the movement is done."""
-        target_position = int(position + self.position_offset)
+        # Map internal 'position' (counts, where 3600 = 0 deg) directly to absolute physical home
+        target_position = int(position - const.DEFAULT_HOME_POSITION + self.current_absolute_home)
         self.nanolib_helper.write_number(self.device_handle, target_position, Nanolib.OdIndex(0x607A, 0x00), 32)
         self.nanolib_helper.write_number(self.device_handle, 0xBF, Nanolib.OdIndex(0x6040, 0x00), 16)
         while True:
@@ -208,8 +209,8 @@ class MotorController:
     def get_position(self):
         """Get position of the motor"""
         position_value = self.nanolib_helper.read_number(self.device_handle, Nanolib.OdIndex(0x6064, 0x00))
-        adjusted_position = position_value - self.position_offset
-        return (const.DEFAULT_HOME_POSITION - adjusted_position) / 10.0
+        # Calculate angle exactly from the absolute home anchor
+        return (self.current_absolute_home - position_value) / 10.0
 
     def stop_motor(self):
         """Stop the movement."""
